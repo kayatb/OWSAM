@@ -1,23 +1,19 @@
 """
-Extract masks and corresponding mask features from SAM for each image in the COCO dataset.
-Iterate over each image to obtain the masks and their features.
-Then, save each mask+feature in a .pt PyTorch file. Merge all mask files belonging to a single image in a tar-file with
-the same name as the input image. All these tar-files are saved in the same directory.
-train_data/
-    img0.tar
-        mask_feature0.pt
-        ...
-        mask_featureN.pt
-    ...
-    imgN.tar
+Extract the image embeddings from SAM for each image in the dataset. The image embeddings are the direct output of the
+SAM image encoder. This is the heaviest computation part of the model, so pre-extracting the embeddings saves a
+lot of time later on.
+The image embeddings are saved in the provided directory with the same file name as the original image they're
+generated from.
 """
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+from segment_anything import sam_model_registry
 from segment_anything.utils.transforms import ResizeLongestSide
 
 import argparse
+import os
 import matplotlib.pyplot as plt
 import numpy as np
-from torchvision.datasets import CocoDetection
+from PIL import Image
+from tqdm import tqdm
 import torch
 
 
@@ -33,17 +29,19 @@ def parse_args():
         help="Dir of the dataset images",
     )
     parser.add_argument(
-        "-a",
-        "--ann-file",
+        "-s",
+        "--save-dir",
         required=True,
-        help="Location of file containing the COCO annotations",
+        help="Directory to save image embeddings",
     )
     parser.add_argument("-g", "--gpu", action="store_true", help="Whether to use the GPU or not.")
 
     return parser.parse_args()
 
 
+# Taken from the SAM demo notebooks.
 def show_anns(anns):
+    """Show the mask annotations superimposed on the original image."""
     if len(anns) == 0:
         return
     sorted_anns = sorted(anns, key=(lambda x: x["area"]), reverse=True)
@@ -59,6 +57,7 @@ def show_anns(anns):
         ax.imshow(np.dstack((img, m * 0.35)))
 
 
+# Taken and adapted from the SAM Predictor.
 def extract_image_embedding(model, image, transform):
     """Extract the image embedding from the model encoder."""
     # Transform the image to the form expected by the model
@@ -75,36 +74,32 @@ def extract_image_embedding(model, image, transform):
     return img_embed
 
 
-def extract_and_save_features(mask_generator, image, save_loc):
-    """Extract the features for all masks found in the image and save them."""
-    masks = mask_generator.generate(image)
-    mask_feature = {"mask": masks["segmentation"], "feature": masks["mask_feature"]}
+def save_all_image_embeddings(model, dataset_dir, save_dir):
+    """Extract and save image embeddings from the model for all images in the dataset.
+    Each embedding is saved in `save_dir` and has the same filename as the original image it came from."""
+    os.makedirs(save_dir, exist_ok=True)
+    print("Starting saving and extraction of the image embeddings...")
+    print(f"All embeddings are saved in `{os.path.abspath(save_dir)}`")
+
+    transform = ResizeLongestSide(sam.image_encoder.img_size)
+
+    for img_file in tqdm(os.listdir(dataset_dir)):
+        img = Image.open(os.path.join(dataset_dir, img_file))
+        img_embed = extract_image_embedding(model, np.array(img), transform)
+        torch.save(img_embed.squeeze(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
+
+
+# def extract_and_save_features(mask_generator, image, save_loc):
+#     """Extract the features for all masks found in the image and save them."""
+#     masks = mask_generator.generate(image)
+#     mask_feature = {"mask": masks["segmentation"], "feature": masks["mask_feature"]}
 
 
 if __name__ == "__main__":
     args = parse_args()
     device = "cuda" if args.gpu else "cpu"
-    dataset = CocoDetection(args.dataset_dir, args.ann_file)
 
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device)
-    mask_generator = SamAutomaticMaskGenerator(sam)
 
-    transform = ResizeLongestSide(sam.image_encoder.img_size)
-
-    for img, _ in dataset:
-        # masks = mask_generator.generate(np.array(img))
-        # print(len(masks))
-        # print(masks[0].keys())
-
-        # print(masks[0]["mask_feature"].shape)
-        img_embed = extract_image_embedding(sam, np.array(img), transform)
-        print(img_embed.shape)
-
-        # plt.figure(figsize=(20, 20))
-        # plt.imshow(img)
-        # show_anns(masks)
-        # plt.axis("off")
-        # plt.show()
-
-        break
+    save_all_image_embeddings(sam, args.dataset_dir, args.save_dir)
