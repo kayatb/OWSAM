@@ -65,13 +65,14 @@ def extract_image_embedding(model, image, transform):
     input_image = torch.as_tensor(input_image, device=model.device)
     input_image = input_image.permute(2, 0, 1).contiguous()[None, :, :, :]
 
-    # Preprocess the image (e.g. normalization)
-    input_image = model.preprocess(input_image)
+    # with torch.no_grad():
+    #     # Preprocess the image (e.g. normalization)
+    #     input_image = model.preprocess(input_image)
 
-    # Obtain the image features.
-    img_embed = model.image_encoder(input_image)
+    #     # Obtain the image features.
+    #     img_embed = model.image_encoder(input_image)
 
-    return img_embed
+    # return img_embed
 
 
 def save_all_image_embeddings(model, dataset_dir, save_dir):
@@ -84,10 +85,13 @@ def save_all_image_embeddings(model, dataset_dir, save_dir):
     transform = ResizeLongestSide(sam.image_encoder.img_size)
 
     for img_file in tqdm(os.listdir(dataset_dir)):
-        img = Image.open(os.path.join(dataset_dir, img_file))
-        img_embed = extract_image_embedding(model, np.array(img), transform)
+        img = Image.open(os.path.join(dataset_dir, img_file)).convert("RGB")
+        try:
+            img_embed = extract_image_embedding(model, np.array(img), transform)
+        except RuntimeError:
+            print(img_file)
         # Save the tensor with the smallest data type possible and without any grads.
-        torch.save(img_embed.squeeze().detach().half(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
+        # torch.save(img_embed.squeeze().detach().half(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
 
 
 # def extract_and_save_features(mask_generator, image, save_loc):
