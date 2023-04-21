@@ -86,7 +86,8 @@ def save_all_image_embeddings(model, dataset_dir, save_dir):
     for img_file in tqdm(os.listdir(dataset_dir)):
         img = Image.open(os.path.join(dataset_dir, img_file))
         img_embed = extract_image_embedding(model, np.array(img), transform)
-        torch.save(img_embed.squeeze(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
+        # Save the tensor with the smallest data type possible and without any grads.
+        torch.save(img_embed.squeeze().detach().half(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
 
 
 # def extract_and_save_features(mask_generator, image, save_loc):
