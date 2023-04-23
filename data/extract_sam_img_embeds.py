@@ -71,8 +71,6 @@ def save_all_image_embeddings(model, data, save_dir):
     for batch in tqdm(data):
         with torch.no_grad():
             img_embeds = model.image_encoder(batch["img"])
-            print(img_embeds.shape)
-            print(batch["fname"])
 
         # Save each image embedding in the batch with the smallest data type possible and without any grads.
         for i in range(img_embeds.shape[0]):
