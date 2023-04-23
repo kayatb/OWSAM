@@ -5,16 +5,16 @@ lot of time later on.
 The image embeddings are saved in the provided directory with the same file name as the original image they're
 generated from.
 """
+from data.image_dataset import ImageDataset
+
 from segment_anything import sam_model_registry
-from segment_anything.utils.transforms import ResizeLongestSide
 
 import argparse
 import os
-import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 from tqdm import tqdm
 import torch
+from torch.utils.data import DataLoader
 
 
 def parse_args():
@@ -35,6 +35,7 @@ def parse_args():
         help="Directory to save image embeddings",
     )
     parser.add_argument("-g", "--gpu", action="store_true", help="Whether to use the GPU or not.")
+    parser.add_argument("-b", "--batch-size", type=int, default=1, help="Batch size")
 
     return parser.parse_args()
 
@@ -42,6 +43,8 @@ def parse_args():
 # Taken from the SAM demo notebooks.
 def show_anns(anns):
     """Show the mask annotations superimposed on the original image."""
+    import matplotlib.pyplot as plt
+
     if len(anns) == 0:
         return
     sorted_anns = sorted(anns, key=(lambda x: x["area"]), reverse=True)
@@ -57,41 +60,23 @@ def show_anns(anns):
         ax.imshow(np.dstack((img, m * 0.35)))
 
 
-# Taken and adapted from the SAM Predictor.
-def extract_image_embedding(model, image, transform):
-    """Extract the image embedding from the model encoder."""
-    # Transform the image to the form expected by the model
-    input_image = transform.apply_image(image)
-    input_image = torch.as_tensor(input_image, device=model.device)
-    input_image = input_image.permute(2, 0, 1).contiguous()[None, :, :, :]
-
-    with torch.no_grad():
-        # Preprocess the image (e.g. normalization)
-        input_image = model.preprocess(input_image)
-
-        # Obtain the image features.
-        img_embed = model.image_encoder(input_image)
-
-    return img_embed
-
-
-def save_all_image_embeddings(model, dataset_dir, save_dir):
+def save_all_image_embeddings(model, data, save_dir):
     """Extract and save image embeddings from the model for all images in the dataset.
     Each embedding is saved in `save_dir` and has the same filename as the original image it came from."""
     os.makedirs(save_dir, exist_ok=True)
+
     print("Starting saving and extraction of the image embeddings...")
     print(f"All embeddings are saved in `{os.path.abspath(save_dir)}`")
 
-    transform = ResizeLongestSide(sam.image_encoder.img_size)
+    for batch in tqdm(data):
+        with torch.no_grad():
+            img_embeds = model.image_encoder(batch["img"])
+            print(img_embeds.shape)
+            print(batch["fname"])
 
-    for img_file in tqdm(os.listdir(dataset_dir)):
-        img = Image.open(os.path.join(dataset_dir, img_file)).convert("RGB")
-        try:
-            img_embed = extract_image_embedding(model, np.array(img), transform)
-        except RuntimeError:
-            print(img_file)
-        # Save the tensor with the smallest data type possible and without any grads.
-        torch.save(img_embed.squeeze().detach().half(), os.path.join(save_dir, f"{img_file[:-4]}.pt"))
+        # Save each image embedding in the batch with the smallest data type possible and without any grads.
+        for i in range(img_embeds.shape[0]):
+            torch.save(img_embeds[i].detach().half(), os.path.join(save_dir, f"{batch['fname'][i]}.pt"))
 
 
 # def extract_and_save_features(mask_generator, image, save_loc):
@@ -107,4 +92,7 @@ if __name__ == "__main__":
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device)
 
-    save_all_image_embeddings(sam, args.dataset_dir, args.save_dir)
+    dataset = ImageDataset(args.dataset_dir)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size)
+
+    save_all_image_embeddings(sam, dataloader, args.save_dir)
