@@ -79,12 +79,6 @@ def save_all_image_embeddings(model, data, save_dir):
             torch.save(img_embeds[i].detach().half(), os.path.join(save_dir, f"{batch['fname'][i]}.pt"))
 
 
-# def extract_and_save_features(mask_generator, image, save_loc):
-#     """Extract the features for all masks found in the image and save them."""
-#     masks = mask_generator.generate(image)
-#     mask_feature = {"mask": masks["segmentation"], "feature": masks["mask_feature"]}
-
-
 if __name__ == "__main__":
     args = parse_args()
     device = "cuda" if args.gpu else "cpu"
