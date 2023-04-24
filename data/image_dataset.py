@@ -1,6 +1,6 @@
 """
 Simple dataset that loads images in a directory and preprocesses them to be fed into SAM.
-This dataset is used extract batched image embeddings from the SAM image encoder. 
+This dataset is used extract batched image embeddings from the SAM image encoder.
 """
 from segment_anything.utils.transforms import ResizeLongestSide
 

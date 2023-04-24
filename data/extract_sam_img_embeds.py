@@ -64,6 +64,7 @@ def save_all_image_embeddings(model, data, save_dir):
     """Extract and save image embeddings from the model for all images in the dataset.
     Each embedding is saved in `save_dir` and has the same filename as the original image it came from."""
     os.makedirs(save_dir, exist_ok=True)
+    model.eval()
 
     print("Starting saving and extraction of the image embeddings...")
     print(f"All embeddings are saved in `{os.path.abspath(save_dir)}`")

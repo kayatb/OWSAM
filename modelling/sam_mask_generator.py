@@ -117,7 +117,6 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
                 "predicted_iou": mask_data["iou_preds"][idx].item(),
                 "point_coords": [mask_data["points"][idx].tolist()],
                 "stability_score": mask_data["stability_score"][idx].item(),
-                # "crop_box": box_xyxy_to_xywh(mask_data["crop_boxes"][idx]).tolist(),
                 "mask_feature": mask_data["mask_features"][idx],
             }
             curr_anns.append(ann)
@@ -351,7 +350,6 @@ if __name__ == "__main__":
 
     mask_generator = OWSamMaskGenerator(sam)
 
-    # image = Image.open("input.jpg")
     image = Image.open("../datasets/coco/val2017/000000459195.jpg")
     embedding = torch.load("img_embeds/000000459195.pt").unsqueeze(0)
     print(embedding.shape)
