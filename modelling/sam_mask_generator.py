@@ -87,9 +87,9 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
 
         self.predictor = OWSamPredictor(model)
 
-    def generate(self, image, embedding):
+    def generate(self, embedding, orig_size):
         # Generate masks
-        mask_data = self._generate_masks(image, embedding)
+        mask_data = self._generate_masks(embedding, orig_size)
 
         # Filter small disconnected regions and holes in masks
         if self.min_mask_region_area > 0:
@@ -123,20 +123,19 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
 
         return curr_anns
 
-    def _generate_masks(self, image, embedding):
-        img_size = image.shape[:2]
-        img_w, img_h = img_size
+    def _generate_masks(self, embedding, orig_size):
+        img_w, img_h = orig_size
 
-        self.predictor.set_image(image, embedding)
+        self.predictor.set_image(embedding, orig_size)
 
         # Get points for the image.
-        points_scale = np.array(img_size)[None, ::-1]
+        points_scale = np.array(orig_size)[None, ::-1]
         points_for_image = self.point_grids[0] * points_scale
 
         # Generate masks for the image in batches.
         data = MaskData()
         for (points,) in batch_iterator(self.points_per_batch, points_for_image):
-            batch_data = self._process_batch(points, img_size, [0, 0, img_h, img_w], img_size)
+            batch_data = self._process_batch(points, orig_size, [0, 0, img_h, img_w], orig_size)
             data.cat(batch_data)
             del batch_data
         self.predictor.reset_image()
@@ -219,10 +218,10 @@ class OWSamPredictor(SamPredictor):
     def __init__(self, sam_model):
         super().__init__(sam_model)
 
-    def set_image(self, img, embedding):
+    def set_image(self, embedding, orig_size):
         """Instead of getting an image and calculating its embedding, use a pre-extracted embedding."""
-        self.img = img
-        self.original_size = img.shape[:2]
+        # self.img = img
+        self.original_size = orig_size
         self.input_size = self._calc_input_size(self.original_size)
         self.features = embedding
         self.is_image_set = True
@@ -279,9 +278,9 @@ class OWSamPredictor(SamPredictor):
 
         if orig_h >= orig_w:
             input_h = 1024
-            input_w = round(1024 / (orig_h / orig_w))
+            input_w = int(1024 / (orig_h / orig_w) + 0.5)
         else:
-            input_h = round(1024 / (orig_w / orig_h))
+            input_h = int(1024 / (orig_w / orig_h) + 0.5)
             input_w = 1024
 
         print((input_h, input_w))
@@ -357,7 +356,6 @@ class OWMaskDecoder(MaskDecoder):
 
 if __name__ == "__main__":
     from segment_anything import sam_model_registry
-    from PIL import Image
 
     device = "cpu"
 
@@ -366,10 +364,12 @@ if __name__ == "__main__":
 
     mask_generator = OWSamMaskGenerator(sam)
 
-    image = Image.open("../datasets/coco/val2017/000000459195.jpg")
-    embedding = torch.load("img_embeds/000000459195.pt").unsqueeze(0)
-    print(embedding.shape)
-    masks = mask_generator.generate(np.array(image), embedding)
+    data = torch.load("img_embeds/000000459195.pt")
+    embedding = data["embed"].unsqueeze(0)
+    orig_size = data["orig_size"]
+
+    masks = mask_generator.generate(embedding, orig_size)
+
     print(len(masks))
     for mask in masks:
         print(mask["bbox"])

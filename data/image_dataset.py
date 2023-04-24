@@ -19,7 +19,12 @@ class ImageDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img = Image.open(os.path.join(self.dir, self.files[idx])).convert("RGB")
         input_img = self.preprocess(np.array(img))
-        return {"img": input_img, "fname": os.path.splitext(self.files[idx])[0]}
+        return {
+            "img": input_img,
+            "orig_h": img.size[0],
+            "orig_w": img.size[1],
+            "fname": os.path.splitext(self.files[idx])[0],
+        }
 
     def __len__(self):
         return len(self.files)
@@ -50,7 +55,7 @@ class ImageDataset(torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     dataset = ImageDataset("../datasets/coco/train2017")
-    # print(dataset[0].shape)
+    # print(dataset[0])
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=5)
     for batch in dataloader:

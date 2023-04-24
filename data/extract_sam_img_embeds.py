@@ -73,9 +73,13 @@ def save_all_image_embeddings(model, data, save_dir):
         with torch.no_grad():
             img_embeds = model.image_encoder(batch["img"])
 
-        # Save each image embedding in the batch with the smallest data type possible and without any grads.
+        # Save each image embedding and the original image size in the batch with the smallest data type possible.
         for i in range(img_embeds.shape[0]):
-            torch.save(img_embeds[i].detach().half(), os.path.join(save_dir, f"{batch['fname'][i]}.pt"))
+            data = {
+                "embed": img_embeds[i].detach().half(),
+                "orig_size": (batch["orig_w"][i].item(), batch["orig_h"][i].item()),
+            }
+            torch.save(data, os.path.join(save_dir, f"{batch['fname'][i]}.pt"))
 
 
 if __name__ == "__main__":
