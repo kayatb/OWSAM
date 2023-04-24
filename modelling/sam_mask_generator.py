@@ -124,7 +124,7 @@ class SamMaskGenerator(SamAutomaticMaskGenerator):
         img_size = image.shape[:2]
         img_w, img_h = img_size
 
-        self.predictor.set_image(image, embedding)  # FIXME: should have embedding
+        self.predictor.set_image(image, embedding)
 
         # Get points for the image.
         points_scale = np.array(img_size)[None, ::-1]
