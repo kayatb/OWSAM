@@ -21,8 +21,30 @@ from torchvision.ops.boxes import batched_nms
 from typing import List, Optional, Tuple
 
 
+def change_sam_decoder(model, checkpoint=None, prompt_embed_dim=256):
+    """Change the model mask decoder from standard to one that also outputs the mask features.
+    This required reloading the checkpoint to ensure the weights are loaded into the new decoder as well."""
+    model.mask_decoder = OWMaskDecoder(
+        num_multimask_outputs=3,
+        transformer=TwoWayTransformer(
+            depth=2,
+            embedding_dim=prompt_embed_dim,
+            mlp_dim=2048,
+            num_heads=8,
+        ),
+        transformer_dim=prompt_embed_dim,
+        iou_head_depth=3,
+        iou_head_hidden_dim=256,
+    )
+
+    if checkpoint is not None:
+        with open(checkpoint, "rb") as f:
+            state_dict = torch.load(f)
+        sam.load_state_dict(state_dict)
+
+
 # TODO: implement batched mask generation
-class SamMaskGenerator(SamAutomaticMaskGenerator):
+class OWSamMaskGenerator(SamAutomaticMaskGenerator):
     """Calculate the mask features using pre-calculated embeddings."""
 
     def __init__(
@@ -61,25 +83,7 @@ class SamMaskGenerator(SamAutomaticMaskGenerator):
         )
 
         # Change the model mask decoder to one that outputs the mask features.
-        # TODO: make a separate function to change the model backbone.
-        prompt_embed_dim = 256
-        model.mask_decoder = OWMaskDecoder(
-            num_multimask_outputs=3,
-            transformer=TwoWayTransformer(
-                depth=2,
-                embedding_dim=prompt_embed_dim,
-                mlp_dim=2048,
-                num_heads=8,
-            ),
-            transformer_dim=prompt_embed_dim,
-            iou_head_depth=3,
-            iou_head_hidden_dim=256,
-        )
-
-        if checkpoint is not None:
-            with open(checkpoint, "rb") as f:
-                state_dict = torch.load(f)
-            sam.load_state_dict(state_dict)
+        change_sam_decoder(model, checkpoint)
 
         self.predictor = OWSamPredictor(model)
 
@@ -345,7 +349,7 @@ if __name__ == "__main__":
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device=device)
 
-    mask_generator = SamMaskGenerator(sam)
+    mask_generator = OWSamMaskGenerator(sam)
 
     # image = Image.open("input.jpg")
     image = Image.open("../datasets/coco/val2017/000000459195.jpg")

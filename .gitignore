@@ -2,6 +2,7 @@ segment-anything
 checkpoints/
 img_embeds/
 *.jpg
+*.zip
 .vscode
 
 # Byte-compiled / optimized / DLL files
