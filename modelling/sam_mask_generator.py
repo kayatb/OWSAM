@@ -43,7 +43,7 @@ def change_sam_decoder(model, checkpoint=None, prompt_embed_dim=256):
         sam.load_state_dict(state_dict)
 
 
-# TODO: implement batched mask generation
+# TODO: implement batched mask generation --> https://github.com/facebookresearch/segment-anything/blob/main/notebooks/predictor_example.ipynb
 class OWSamMaskGenerator(SamAutomaticMaskGenerator):
     """Calculate the mask features using pre-calculated embeddings."""
 
@@ -222,7 +222,8 @@ class OWSamPredictor(SamPredictor):
         """Instead of getting an image and calculating its embedding, use a pre-extracted embedding."""
         # self.img = img
         self.original_size = orig_size
-        self.input_size = self._calc_input_size(self.original_size)
+        # self.input_size = self._calc_input_size(self.original_size)
+        self.input_size = self.transform.get_preprocess_shape(orig_size[0], orig_size[1], 1024)
         self.features = embedding
         self.is_image_set = True
 
@@ -269,22 +270,22 @@ class OWSamPredictor(SamPredictor):
 
         return masks, iou_predictions, low_res_masks, mask_features
 
-    def _calc_input_size(self, orig_size):
-        """Calculate the size of the image that was inputted into the model to
-        obtain the image embedding from the original image size.
-        The longest side is set to 1024 and the other side is resized such that
-        the aspect-ratio stays the same."""
-        orig_h, orig_w = orig_size
+    # def _calc_input_size(self, orig_size):
+    #     """Calculate the size of the image that was inputted into the model to
+    #     obtain the image embedding from the original image size.
+    #     The longest side is set to 1024 and the other side is resized such that
+    #     the aspect-ratio stays the same."""
+    #     orig_h, orig_w = orig_size
 
-        if orig_h >= orig_w:
-            input_h = 1024
-            input_w = int(1024 / (orig_h / orig_w) + 0.5)
-        else:
-            input_h = int(1024 / (orig_w / orig_h) + 0.5)
-            input_w = 1024
+    #     if orig_h >= orig_w:
+    #         input_h = 1024
+    #         input_w = int(1024 / (orig_h / orig_w) + 0.5)
+    #     else:
+    #         input_h = int(1024 / (orig_w / orig_h) + 0.5)
+    #         input_w = 1024
 
-        print((input_h, input_w))
-        return (input_h, input_w)
+    #     print((input_h, input_w))
+    #     return (input_h, input_w)
 
 
 class OWMaskDecoder(MaskDecoder):
