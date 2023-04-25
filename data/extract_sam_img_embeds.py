@@ -71,7 +71,7 @@ def save_all_image_embeddings(model, data, save_dir):
 
     for batch in tqdm(data):
         with torch.no_grad():
-            img_embeds = model.image_encoder(batch["img"])
+            img_embeds = model.image_encoder(batch["img"].to(model.device))
 
         # Save each image embedding and the original image size in the batch with the smallest data type possible.
         for i in range(img_embeds.shape[0]):
