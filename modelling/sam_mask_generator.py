@@ -166,6 +166,9 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
         transformed_points = self.predictor.transform.apply_coords(points, im_size)
         in_points = torch.as_tensor(transformed_points, device=self.predictor.device)
         in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
+
+        print("INPOINTS", in_points.shape)
+        print("INLABELS", in_labels.shape)
         masks, iou_preds, _, mask_features = self.predictor.predict_torch(
             in_points[:, None, :],
             in_labels[:, None],
@@ -222,8 +225,7 @@ class OWSamPredictor(SamPredictor):
         """Instead of getting an image and calculating its embedding, use a pre-extracted embedding."""
         # self.img = img
         self.original_size = orig_size
-        # self.input_size = self._calc_input_size(self.original_size)
-        self.input_size = self.transform.get_preprocess_shape(orig_size[0], orig_size[1], 1024)
+        self.input_size = self.transform.get_preprocess_shape(orig_size[0], orig_size[1], self.transform.target_length)
         self.features = embedding
         self.is_image_set = True
 
@@ -269,23 +271,6 @@ class OWSamPredictor(SamPredictor):
             masks = masks > self.model.mask_threshold
 
         return masks, iou_predictions, low_res_masks, mask_features
-
-    # def _calc_input_size(self, orig_size):
-    #     """Calculate the size of the image that was inputted into the model to
-    #     obtain the image embedding from the original image size.
-    #     The longest side is set to 1024 and the other side is resized such that
-    #     the aspect-ratio stays the same."""
-    #     orig_h, orig_w = orig_size
-
-    #     if orig_h >= orig_w:
-    #         input_h = 1024
-    #         input_w = int(1024 / (orig_h / orig_w) + 0.5)
-    #     else:
-    #         input_h = int(1024 / (orig_w / orig_h) + 0.5)
-    #         input_w = 1024
-
-    #     print((input_h, input_w))
-    #     return (input_h, input_w)
 
 
 class OWMaskDecoder(MaskDecoder):
@@ -357,20 +342,25 @@ class OWMaskDecoder(MaskDecoder):
 
 if __name__ == "__main__":
     from segment_anything import sam_model_registry
+    from data.img_embeds_dataset import ImageEmbeds
 
     device = "cpu"
 
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device=device)
 
+    dataset = ImageEmbeds("img_embeds", sam.device)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=ImageEmbeds.collate_fn)
+
     mask_generator = OWSamMaskGenerator(sam)
 
-    data = torch.load("img_embeds/000000459195.pt")
-    embedding = data["embed"].unsqueeze(0)
-    orig_size = data["orig_size"]
+    for batch in dataloader:
+        print(batch["original_size"])
+        print(batch["embed"].shape)
+        for i in range(batch["embed"].shape[0]):
+            print(batch["embed"][i].shape)
+            masks = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
-    masks = mask_generator.generate(embedding, orig_size)
-
-    print(len(masks))
-    for mask in masks:
-        print(mask["bbox"])
+        print(len(masks))
+        for mask in masks:
+            print(mask["bbox"])
