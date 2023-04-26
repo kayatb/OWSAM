@@ -22,5 +22,5 @@ pip install -e .
 
 Install additional tools:
 ```bash
-pip install opencv-python pycocotools matplotlib tqdm
+pip install opencv-python pycocotools matplotlib tqdm lightning scipy
 ```

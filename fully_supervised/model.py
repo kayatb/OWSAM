@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+# import torch.nn.functional as F
 
 
 class FullySupervisedClassifier(nn.Module):
@@ -30,7 +31,10 @@ class FullySupervisedClassifier(nn.Module):
             x = self.classifier(x)
             class_logits.append(x)
 
-        return {"masks": masks, "mask_features": mask_features, "class_logits": class_logits}
+        return {
+            "masks": masks,
+            "class_logits": class_logits,
+        }  # TODO: could also return mask_features here, but don't think it's necessary
 
     def get_mask_features(self, batch):
         masks = []
@@ -69,11 +73,11 @@ if __name__ == "__main__":
     mask_generator = OWSamMaskGenerator(sam)
 
     model = FullySupervisedClassifier(mask_generator, 3, 100, 80)
+    print(model)
+    # for batch in dataloader:
+    #     output = model(batch)
 
-    for batch in dataloader:
-        output = model(batch)
-
-        print(output["class_logits"][0].shape)
-        # for a in output:
-        #     print(a.shape)
-        # print(model(batch).shape)
+    #     print(output["class_logits"][0].shape)
+    # for a in output:
+    #     print(a.shape)
+    # print(model(batch).shape)
