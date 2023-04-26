@@ -1,10 +1,7 @@
 from segment_anything.utils.amg import build_all_layer_point_grids
-from segment_anything.utils.transforms import ResizeLongestSide
 
 import torch
 import os
-
-# import numpy as np
 
 
 class ImageEmbeds(torch.utils.data.Dataset):
@@ -17,7 +14,6 @@ class ImageEmbeds(torch.utils.data.Dataset):
         self.device = device
 
         self.point_grids = build_all_layer_point_grids(points_per_side, 0, 1)
-        self.transform = ResizeLongestSide(1024)
 
     def __getitem__(self, idx):
         """Returns the image embedding (256 x 64 x 64), the original image size (W x H), the image file name,
@@ -25,25 +21,11 @@ class ImageEmbeds(torch.utils.data.Dataset):
         file_path = os.path.join(self.dir, self.files[idx])
         img_data = torch.load(file_path, map_location=self.device)
 
-        # point_coords, point_labels = self.make_points(img_data["orig_size"])
-
         return {
             "embed": img_data["embed"],
             "original_size": img_data["orig_size"],
-            # "point_coords": point_coords,
-            # "point_labels": point_labels,
             "file_name": os.path.splitext(self.files[idx])[0],
         }
-
-    # def make_points(self, orig_size):
-    #     points_scale = np.array(orig_size)[None, ::-1]
-    #     points_for_image = self.point_grids[0] * points_scale
-
-    #     transformed_points = self.transform.apply_coords(points_for_image, orig_size)
-    #     in_points = torch.as_tensor(transformed_points, device=self.device)
-    #     in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
-
-    #     return in_points, in_labels
 
     def __len__(self):
         return len(self.files)
@@ -59,17 +41,9 @@ class ImageEmbeds(torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     dataset = ImageEmbeds("img_embeds", "cpu")
-    # print(len(dataset))
-    # print(dataset[0]["point_coords"].shape)
-    # print(dataset[0]["point_labels"].shape)
-    # print(dataset[0]["embed"].shape)
-    # print(dataset[0]["original_size"])
-
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
 
     for batch in dataloader:
         print(batch["embed"].shape)
         print(batch["original_size"])
-        # print(batch["point_coords"].shape)
-        # print(batch["point_labels"].shape)
         print(batch["file_name"])

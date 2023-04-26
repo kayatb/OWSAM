@@ -40,7 +40,7 @@ def change_sam_decoder(model, checkpoint=None, prompt_embed_dim=256):
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
-        sam.load_state_dict(state_dict)
+        model.load_state_dict(state_dict)
 
 
 # TODO: implement batched mask generation --> https://github.com/facebookresearch/segment-anything/blob/main/notebooks/predictor_example.ipynb
@@ -167,8 +167,6 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
         in_points = torch.as_tensor(transformed_points, device=self.predictor.device)
         in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
 
-        print("INPOINTS", in_points.shape)
-        print("INLABELS", in_labels.shape)
         masks, iou_preds, _, mask_features = self.predictor.predict_torch(
             in_points[:, None, :],
             in_labels[:, None],
@@ -355,12 +353,9 @@ if __name__ == "__main__":
     mask_generator = OWSamMaskGenerator(sam)
 
     for batch in dataloader:
-        print(batch["original_size"])
-        print(batch["embed"].shape)
         for i in range(batch["embed"].shape[0]):
-            print(batch["embed"][i].shape)
             masks = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
-        print(len(masks))
-        for mask in masks:
-            print(mask["bbox"])
+            print(len(masks))
+            for mask in masks:
+                print(mask["mask_feature"].shape)
