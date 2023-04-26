@@ -20,27 +20,38 @@ class ImageEmbeds(torch.utils.data.Dataset):
         img_data = torch.load(file_path, map_location=self.device)
 
         img_id = int(os.path.splitext(self.files[idx])[0])
-        ann_ids = self.coco.getAnnIds(imgIds=[img_id], iscrowd=None)
-        anns = self.coco.loadAnns(ann_ids)
+        targets = self.get_coco_targets(img_id)
 
         return {
             "embed": img_data["embed"],
             "original_size": img_data["orig_size"],
-            "gt_anns": anns,
+            "targets": targets,
             "img_id": img_id,
         }
 
     def __len__(self):
         return len(self.files)
 
+    def get_coco_targets(self, img_id):
+        """Get the COCO annotations belonging to the image embedding.
+        Convert the annotation to the format expected by the criterion."""
+        ann_ids = self.coco.getAnnIds(imgIds=[img_id], iscrowd=None)
+        anns = self.coco.loadAnns(ann_ids)
+
+        targets = {}
+        targets["labels"] = [ann["category_id"] for ann in anns]
+        targets["boxes"] = [ann["bbox"] for ann in anns]
+
+        return targets
+
     @staticmethod
     def collate_fn(data):
         embeds = torch.stack([d["embed"] for d in data])
         original_sizes = [d["original_size"] for d in data]
         img_ids = [d["img_id"] for d in data]
-        anns = [d["gt_anns"] for d in data]
+        targets = [d["targets"] for d in data]
 
-        return {"embed": embeds, "original_size": original_sizes, "img_id": img_ids, "gt_anns": anns}
+        return {"embed": embeds, "original_size": original_sizes, "img_id": img_ids, "targets": targets}
 
 
 if __name__ == "__main__":
@@ -48,6 +59,6 @@ if __name__ == "__main__":
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
 
     for batch in dataloader:
-        print(batch["embed"].shape)
-        print(batch["original_size"])
-        print(len(batch["gt_anns"]))
+        # print(batch["embed"].shape)
+        # print(batch["original_size"])
+        print(batch["targets"])
