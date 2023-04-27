@@ -56,14 +56,16 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         # loss = outputs.loss
         loss = self.criterion(outputs, batch["targets"])
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_class_error", loss["class_error"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss_ce", loss["loss"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_class_error", loss["class_error"], on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("val_loss_ce", loss["loss"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         # Check if any predictions were made.
         # self.map.update(pred_metric_input, gt_metric_input)
@@ -181,9 +183,9 @@ if __name__ == "__main__":
     # model_summary = ModelSummary()
 
     trainer = pl.Trainer(
-        fast_dev_run=5,
-        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
-        # limit_val_batches=0.001,
+        # fast_dev_run=True,
+        limit_train_batches=0.5,  # FIXME: remove this for actual training!
+        limit_val_batches=0.5,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator=config.device,

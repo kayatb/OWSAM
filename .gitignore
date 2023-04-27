@@ -1,6 +1,7 @@
 segment-anything
 checkpoints/
 img_embeds/
+tensorboard_logs/
 *.jpg
 *.zip
 .vscode

@@ -15,6 +15,18 @@ class ImageEmbeds(torch.utils.data.Dataset):
         self.coco = COCO(ann_file)
         self.device = device
 
+        # Create a mapping from category ID to category name.
+        self.cat_id_to_name = {}
+        for category in self.coco.loadCats(self.coco.getCatIds()):
+            self.cat_id_to_name[category["id"]] = category["name"]
+
+        # COCO class ids are non-continuous. Map them to a continuous range and vice versa.
+        self.cat_id_to_continuous = {}
+        self.continuous_to_cat_id = {}
+        for i, id in enumerate(self.cat_id_to_name.keys()):
+            self.cat_id_to_continuous[id] = i + 1  # Start the classes at 1, to keep 0 as the no-object class.
+            self.continuous_to_cat_id[i + 1] = id
+
     def __getitem__(self, idx):
         """Returns the image embedding (256 x 64 x 64), the original image size (W x H), the image file name,
         and a grid of point coordinates and labels to use as prompts for SAM."""
@@ -41,7 +53,9 @@ class ImageEmbeds(torch.utils.data.Dataset):
         anns = self.coco.loadAnns(ann_ids)
 
         targets = {}
-        targets["labels"] = torch.as_tensor([ann["category_id"] for ann in anns], dtype=torch.long)
+        targets["labels"] = torch.as_tensor(
+            [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
+        )
         targets["boxes"] = torch.as_tensor([ann["bbox"] for ann in anns])
 
         return targets
@@ -71,7 +85,9 @@ class ImageEmbeds(torch.utils.data.Dataset):
 if __name__ == "__main__":
     dataset = ImageEmbeds("img_embeds", "../datasets/coco/annotations/instances_val2017.json", "cpu")
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
-
+    # print(dataset.cat_id_to_continuous)
+    # print(dataset.continuous_to_cat_id)
+    # print(dataset.cat_id_to_name)
     for batch in dataloader:
         # print(batch["embed"].shape)
         # print(batch["original_size"])

@@ -17,7 +17,7 @@ num_workers = 12
 checkpoint_dir = "checkpoints"
 log_dir = "tensorboard_logs"
 
-device = "cpu"
+device = "gpu"
 num_devices = 1
 seed = 29
 
