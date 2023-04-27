@@ -18,13 +18,33 @@ from lightning.pytorch.callbacks import (
 )
 
 # from torchmetrics.detection.mean_ap import MeanAveragePrecision
+"""
+It returns a dict with the following elements:
+               - "pred_logits": the classification logits (including no-object) for all queries.
+                                Shape= [batch_size x num_queries x (num_classes + 1)]
+               - "pred_boxes": The normalized boxes coordinates for all queries, represented as
+                               (center_x, center_y, height, width). These values are normalized in [0, 1],
+                               relative to the size of each individual image (disregarding possible padding).
+                               See PostProcess for information on how to retrieve the unnormalized bounding box.
+               - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
+                                dictionnaries containing the two above keys for each decoder layer.
+
+outputs: This is a dict that contains at least these entries:
+                 "pred_logits": Tensor of dim [batch_size, num_queries, num_classes] with the classification logits
+                 "pred_boxes": Tensor of dim [batch_size, num_queries, 4] with the predicted box coordinates
+            targets: This is a list of targets (len(targets) = batch_size), where each target is a dict containing:
+                 "labels": Tensor of dim [num_target_boxes] (where num_target_boxes is the number of ground-truth
+                           objects in the target) containing the class labels
+                 "boxes": Tensor of dim [num_target_boxes, 4] containing the target box coordinates
+
+The COCO bounding box format is [top left x position, top left y position, width, height]
+"""
 
 
 class LitFullySupervisedClassifier(pl.LightningModule):
     def __init__(self, model):
         super().__init__()
         self.model = model
-        # self.criterion = Criterion()
         # self.map = MeanAveragePrecision(iou_type="segm")  # , class_metrics=per_class)
         self.criterion = self.set_criterion()
 
@@ -35,25 +55,25 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         outputs = self.model(batch)
 
         # loss = outputs.loss
-        loss = self.criterion(outputs)
+        loss = self.criterion(outputs, batch["targets"])
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
-        loss = self.criterion(outputs)
+        loss = self.criterion(outputs, batch["targets"])
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         # Check if any predictions were made.
         # self.map.update(pred_metric_input, gt_metric_input)
 
-    def on_validation_epoch_end(self):
-        pass
-        # mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-        # self.print(mAPs)
-        # self.log_dict(mAPs, sync_dist=True)
-        # self.map.reset()
+    # def on_validation_epoch_end(self):
+    #     pass
+    #     # mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
+    #     # self.print(mAPs)
+    #     # self.log_dict(mAPs, sync_dist=True)
+    #     # self.map.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
@@ -71,7 +91,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         criterion = SetCriterion(
             self.model.num_classes - 1, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
         )
-        criterion.to(self.model.device)
+        criterion.to(self.device)
 
         return criterion
 
@@ -97,8 +117,8 @@ def parse_args():
 
 
 def load_data():
-    dataset_train = ImageEmbeds(config.data_dir, "train")
-    dataset_val = ImageEmbeds(config.data_dir, "val")
+    dataset_train = ImageEmbeds(config.embeds_train, config.ann_train, config.device)
+    dataset_val = ImageEmbeds(config.embeds_val, config.ann_val, config.device)
 
     dataloader_train = DataLoader(
         dataset_train,
@@ -121,11 +141,12 @@ def load_data():
 
 def load_model():
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
-    sam.to(device=config.device)
 
     mask_generator = OWSamMaskGenerator(sam)
 
     model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
+    sam.to(device=config.device)
+    model.to(config.device)
 
     return model
 
@@ -160,7 +181,7 @@ if __name__ == "__main__":
     # model_summary = ModelSummary()
 
     trainer = pl.Trainer(
-        # fast_dev_run=16,
+        fast_dev_run=5,
         # limit_train_batches=0.001,  # FIXME: remove this for actual training!
         # limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,

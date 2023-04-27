@@ -85,6 +85,9 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
         # Change the model mask decoder to one that outputs the mask features.
         change_sam_decoder(model, checkpoint)
 
+        for param in model.parameters():
+            param.requires_grad = False
+
         self.predictor = OWSamPredictor(model)
 
     def generate(self, embedding, orig_size):

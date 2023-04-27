@@ -31,7 +31,7 @@ class FullySupervisedClassifier(nn.Module):
         for i, feature in enumerate(mask_features):
             x = self.layers(feature)
             x = self.classifier(x)
-            # Pad the logits to be able to stack them in a single tensor.
+            # Pad the logits with extremely low values to be able to stack them in a single tensor.
             # Necessary since the amount of found masks is not constant across images.
             class_logits[i] = F.pad(x, (0, 0, 0, self.pad_num - x.shape[0]), "constant", -1000)
 
@@ -63,7 +63,7 @@ class FullySupervisedClassifier(nn.Module):
 
             masks.append(torch.stack(batch_masks))
             batch_bbox = torch.stack(batch_bbox)
-            # Pad the bboxes to be able to stack them in a single tensor.
+            # Pad the bboxes with empty boxes to be able to stack them in a single tensor.
             # Necessary since the amount of found masks is not constant across images.
             boxes[i] = F.pad(batch_bbox, (0, 0, 0, self.pad_num - batch_bbox.shape[0]), "constant", 0)
             mask_features.append(torch.stack(batch_mask_features))
