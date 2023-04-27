@@ -25,7 +25,7 @@ class FullySupervisedClassifier(nn.Module):
     # TODO: batch-ify this
     def forward(self, batch):
         batch_size = batch["embed"].shape[0]
-        masks, boxes, mask_features = self.get_mask_features(batch)
+        masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
 
         class_logits = torch.zeros((batch_size, self.pad_num, self.num_classes))
         for i, feature in enumerate(mask_features):
@@ -40,6 +40,7 @@ class FullySupervisedClassifier(nn.Module):
             "masks": masks,
             "pred_logits": class_logits,
             "pred_boxes": boxes,
+            "iou_scores": iou_scores,
         }  # TODO: could also return mask_features here, but don't think it's necessary
 
     def get_mask_features(self, batch):
@@ -47,12 +48,15 @@ class FullySupervisedClassifier(nn.Module):
         masks = []
         boxes = torch.zeros((batch_size, self.pad_num, 4))
         mask_features = []
+        iou_scores = torch.zeros((batch_size, self.pad_num))
 
         # TODO: batch-ify this.
         for i in range(batch_size):
+            # TODO: make this torch tensors from the get-go to avoid torch.stack calls
             batch_masks = []
             batch_bbox = []
             batch_mask_features = []
+            batch_iou_scores = []
             with torch.no_grad():
                 sam_output = self.sam_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
@@ -60,15 +64,18 @@ class FullySupervisedClassifier(nn.Module):
                 batch_masks.append(torch.as_tensor(mask["segmentation"]))
                 batch_bbox.append(torch.as_tensor(mask["bbox"]))
                 batch_mask_features.append(torch.as_tensor(mask["mask_feature"]))
+                batch_iou_scores.append(mask["predicted_iou"])
 
             masks.append(torch.stack(batch_masks))
             batch_bbox = torch.stack(batch_bbox)
+            batch_iou_scores += [0] * (self.pad_num - len(batch_iou_scores))
             # Pad the bboxes with empty boxes to be able to stack them in a single tensor.
             # Necessary since the amount of found masks is not constant across images.
             boxes[i] = F.pad(batch_bbox, (0, 0, 0, self.pad_num - batch_bbox.shape[0]), "constant", 0)
+            iou_scores[i] = torch.as_tensor(batch_iou_scores)
             mask_features.append(torch.stack(batch_mask_features))
 
-        return masks, boxes, mask_features
+        return masks, boxes, mask_features, iou_scores
 
 
 if __name__ == "__main__":

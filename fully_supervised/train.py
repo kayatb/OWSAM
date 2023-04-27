@@ -16,8 +16,8 @@ from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     # ModelSummary,
 )
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-# from torchmetrics.detection.mean_ap import MeanAveragePrecision
 """
 It returns a dict with the following elements:
                - "pred_logits": the classification logits (including no-object) for all queries.
@@ -45,7 +45,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
     def __init__(self, model):
         super().__init__()
         self.model = model
-        # self.map = MeanAveragePrecision(iou_type="segm")  # , class_metrics=per_class)
+        self.map = MeanAveragePrecision(bbox_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
         self.criterion = self.set_criterion()
 
         self.validation_step_gt = []
@@ -53,9 +53,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         outputs = self.model(batch)
-
-        # loss = outputs.loss
         loss = self.criterion(outputs, batch["targets"])
+
         self.log("train_class_error", loss["class_error"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log("train_loss_ce", loss["loss"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
@@ -64,18 +63,18 @@ class LitFullySupervisedClassifier(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
+
         self.log("val_class_error", loss["class_error"], on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log("val_loss_ce", loss["loss"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
-        # Check if any predictions were made.
-        # self.map.update(pred_metric_input, gt_metric_input)
+        pred_metric_input = self.get_map_format(outputs)
+        self.map.update(pred_metric_input, batch["targets"])
 
-    # def on_validation_epoch_end(self):
-    #     pass
-    #     # mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-    #     # self.print(mAPs)
-    #     # self.log_dict(mAPs, sync_dist=True)
-    #     # self.map.reset()
+    def on_validation_epoch_end(self):
+        mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
+        self.print(mAPs)
+        self.log_dict(mAPs, sync_dist=True)
+        self.map.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
@@ -96,6 +95,27 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         criterion.to(self.device)
 
         return criterion
+
+    def get_map_format(self, outputs):
+        """Convert the data to the format that the metric will accept:
+        a list of dictionaries, where each dictionary corresponds to a single image.
+        Args:
+            outputs: dict containing model outputs with keys `masks`, `pred_logits`, and `pred_boxes`
+
+        Returns:
+            pred_conv: list of dicts, where each dict contains `boxes`, `scores` and `labels`
+        """
+        pred_conv = []
+
+        for i in range(outputs["pred_logits"].shape[0]):  # Loop over the batches
+            pred_dict = {
+                "boxes": outputs["pred_boxes"][i],
+                "scores": outputs["iou_scores"][i],
+                "labels": torch.argmax(outputs["pred_logits"][i], dim=1),  # Get labels from the logits
+            }
+            pred_conv.append(pred_dict)
+
+        return pred_conv
 
 
 def parse_args():
@@ -183,12 +203,12 @@ if __name__ == "__main__":
     # model_summary = ModelSummary()
 
     trainer = pl.Trainer(
-        # fast_dev_run=True,
-        limit_train_batches=0.5,  # FIXME: remove this for actual training!
-        limit_val_batches=0.5,
+        fast_dev_run=True,
+        # limit_train_batches=0.5,  # FIXME: remove this for actual training!
+        # limit_val_batches=0.5,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
-        accelerator=config.device,
+        accelerator="gpu" if config.device == "cuda" else "cpu",
         log_every_n_steps=1,
         devices=config.num_devices,
         enable_checkpointing=True,
