@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 
-import torch.nn.functional as F
-
 
 class FullySupervisedClassifier(nn.Module):
+    """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
+
     def __init__(self, sam_generator, num_layers, hidden_dim, num_classes, pad_num=200, input_dim=256):
         super().__init__()
 
-        self.num_classes = num_classes + 1  # Account for the backrground/no-object class.
+        self.num_classes = num_classes + 1  # +1 for the backrground/no-object class.
         self.pad_num = pad_num
         self.input_dim = input_dim
 
@@ -41,24 +41,25 @@ class FullySupervisedClassifier(nn.Module):
             "masks": masks,
             "pred_logits": class_logits,
             "pred_boxes": boxes,
-            "iou_scores": iou_scores,
+            "iou_scores": iou_scores,  # Used for mAP calculation
         }
 
     @torch.no_grad()
     def get_mask_features(self, batch):
+        """Get the output (i.e. masks, bounding boxes, mask features, etc.) from SAM.
+        Pad everything to a uniform shape for batched processing."""
         batch_size = batch["embed"].shape[0]
 
         masks = []
+        # Ensure all images end up with outputs of the same size, even though SAM outputs a different number of masks
+        # for each image. The last few boxes, features, and IoU scores for each image are padding.
         boxes = torch.zeros((batch_size, self.pad_num, 4))
-        # mask_features = []
         mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim))
-        iou_scores = torch.zeros((batch_size, self.pad_num))
+        iou_scores = -torch.ones((batch_size, self.pad_num))
 
         # TODO: batch-ify this.
         for i in range(batch_size):
-            # TODO: make this torch tensors from the get-go to avoid torch.stack calls
             batch_masks = []
-            # batch_mask_features = []
 
             sam_output = self.sam_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
@@ -66,11 +67,9 @@ class FullySupervisedClassifier(nn.Module):
                 batch_masks.append(torch.as_tensor(mask["segmentation"]))
                 boxes[i, j] = torch.as_tensor(mask["bbox"])
                 mask_features[i, j] = torch.as_tensor(mask["mask_feature"])
-                # batch_mask_features.append(torch.as_tensor(mask["mask_feature"]))
                 iou_scores[i, j] = mask["predicted_iou"]
 
             masks.append(torch.stack(batch_masks))
-            # mask_features.append(torch.stack(batch_mask_features))
 
         return masks, boxes, mask_features, iou_scores
 
@@ -100,7 +99,3 @@ if __name__ == "__main__":
         print(output["pred_boxes"].shape)
 
         print(output["pred_logits"].shape)
-
-    # for a in output:
-    #     print(a.shape)
-    # print(model(batch).shape)

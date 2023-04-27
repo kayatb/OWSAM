@@ -18,30 +18,10 @@ from lightning.pytorch.callbacks import (
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-"""
-It returns a dict with the following elements:
-               - "pred_logits": the classification logits (including no-object) for all queries.
-                                Shape= [batch_size x num_queries x (num_classes + 1)]
-               - "pred_boxes": The normalized boxes coordinates for all queries, represented as
-                               (center_x, center_y, height, width). These values are normalized in [0, 1],
-                               relative to the size of each individual image (disregarding possible padding).
-                               See PostProcess for information on how to retrieve the unnormalized bounding box.
-               - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
-                                dictionnaries containing the two above keys for each decoder layer.
-
-outputs: This is a dict that contains at least these entries:
-                 "pred_logits": Tensor of dim [batch_size, num_queries, num_classes] with the classification logits
-                 "pred_boxes": Tensor of dim [batch_size, num_queries, 4] with the predicted box coordinates
-            targets: This is a list of targets (len(targets) = batch_size), where each target is a dict containing:
-                 "labels": Tensor of dim [num_target_boxes] (where num_target_boxes is the number of ground-truth
-                           objects in the target) containing the class labels
-                 "boxes": Tensor of dim [num_target_boxes, 4] containing the target box coordinates
-
-The COCO bounding box format is [top left x position, top left y position, width, height]
-"""
-
 
 class LitFullySupervisedClassifier(pl.LightningModule):
+    """Lightning module for training the fully supervised classification head."""
+
     def __init__(self, model):
         super().__init__()
         self.model = model
@@ -82,6 +62,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def set_criterion(self):
+        """Use the DETR loss (but only the classification part)."""
         eos_coef = 0.1
         weight_dict = {"loss_ce": 1, "loss_bbox": 5}
         weight_dict["loss_giou"] = 2
@@ -132,6 +113,7 @@ def parse_args():
         # required=True,
         help="Directory to store (Tensorboard) logging.",
     )
+    parser.add_argument("-e", "--embed-dir", help="Directory where the pre-extracted image embeddings are saved.")
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
 
     args = parser.parse_args()
@@ -167,7 +149,7 @@ def load_model():
     mask_generator = OWSamMaskGenerator(sam)
 
     model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
-    sam.to(device=config.device)
+    sam.to(device=config.device)  # Only do this after the mask decoder has been changed by the generator!
     model.to(config.device)
 
     return model
@@ -180,6 +162,8 @@ if __name__ == "__main__":
         config.checkpoint_dir = args.checkpoint_dir
     if args.log_dir:
         config.log_dir = args.log_dir
+    if args.embed_dir:
+        config.embed_dir = args.embed_dir
     if args.num_gpus:
         config.num_devices = args.num_gpus
 
@@ -203,7 +187,7 @@ if __name__ == "__main__":
     # model_summary = ModelSummary()
 
     trainer = pl.Trainer(
-        fast_dev_run=True,
+        # fast_dev_run=True,
         # limit_train_batches=0.5,  # FIXME: remove this for actual training!
         # limit_val_batches=0.5,
         default_root_dir=config.checkpoint_dir,

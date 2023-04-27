@@ -1,6 +1,6 @@
 """
 Copy-paste from DETR:
-https://github.com/facebookresearch/detr/blob/3af9fa878e73b6894ce3596450a8d9b89d918ca9/util/box_ops.py
+https://github.com/facebookresearch/detr/blob/main/util/box_ops.py
 """
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 """

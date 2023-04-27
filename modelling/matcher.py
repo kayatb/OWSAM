@@ -1,3 +1,8 @@
+"""
+Matcher used for the DETR loss.
+Copied and adapted from DETR: https://github.com/facebookresearch/detr/blob/main/models/matcher.py
+"""
+
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 """
 Modules to compute the matching cost and solve the corresponding LSAP.

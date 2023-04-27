@@ -1,3 +1,5 @@
+"""Config for the training of the fully-supervised classification model."""
+
 num_layers = 3
 hidden_dim = 100
 
@@ -6,7 +8,7 @@ lr = 1e-4
 weight_decay = None
 clip = None  # Gradient clipping
 
-ann_train = "../datasets/coco/annotations/instances_val2017.json"
+ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
 embeds_train = "img_embeds"
 embeds_val = "img_embeds"

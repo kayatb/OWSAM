@@ -36,7 +36,7 @@ def change_sam_decoder(model, checkpoint=None, prompt_embed_dim=256):
         iou_head_depth=3,
         iou_head_hidden_dim=256,
     )
-
+    # Re-load the weights.
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
@@ -45,7 +45,8 @@ def change_sam_decoder(model, checkpoint=None, prompt_embed_dim=256):
 
 # TODO: implement batched mask generation --> https://github.com/facebookresearch/segment-anything/blob/main/notebooks/predictor_example.ipynb
 class OWSamMaskGenerator(SamAutomaticMaskGenerator):
-    """Calculate the mask features using pre-calculated embeddings."""
+    """Calculate the masks and their corresponding features using pre-calculated embeddings.
+    Copied and adapted from `segment_anything.automatic_mask_generator.SamAutomaticMaskGenerator`."""
 
     def __init__(
         self,
@@ -217,7 +218,8 @@ class OWSamMaskGenerator(SamAutomaticMaskGenerator):
 
 
 class OWSamPredictor(SamPredictor):
-    """SAM Predictor that also outputs mask features and accepts a pre-calculated embedding instead of the image."""
+    """SAM Predictor that also outputs mask features and accepts a pre-calculated embedding instead of the image.
+    Copied and adapted from: `segment_anything.predictor.SamPredictor`."""
 
     def __init__(self, sam_model):
         super().__init__(sam_model)
@@ -275,6 +277,9 @@ class OWSamPredictor(SamPredictor):
 
 
 class OWMaskDecoder(MaskDecoder):
+    """SAM mask decoder that also outputs the mask hidden features.
+    Copied and adapted from: `segment_anything.modeling.mask_decoder.MaskDecoder`."""
+
     def forward(
         self,
         image_embeddings: torch.Tensor,

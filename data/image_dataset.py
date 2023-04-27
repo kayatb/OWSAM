@@ -1,7 +1,3 @@
-"""
-Simple dataset that loads images in a directory and preprocesses them to be fed into SAM.
-This dataset is used extract batched image embeddings from the SAM image encoder.
-"""
 from segment_anything.utils.transforms import ResizeLongestSide
 
 import os
@@ -12,6 +8,9 @@ from PIL import Image
 
 
 class ImageDataset(torch.utils.data.Dataset):
+    """Simple dataset that loads images in a directory and preprocesses them to be fed into SAM.
+    This dataset is used extract batched image embeddings from the SAM image encoder."""
+
     def __init__(self, dir):
         self.dir = dir
         self.files = [file for file in os.listdir(dir)]
@@ -31,6 +30,7 @@ class ImageDataset(torch.utils.data.Dataset):
 
     # Taken from SAM example notebooks.
     def preprocess(self, img):
+        """Pre-process the image in order to be used as input for SAM."""
         image_size = 1024
         transform = ResizeLongestSide(image_size)
 
