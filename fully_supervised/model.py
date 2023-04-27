@@ -23,18 +23,19 @@ class FullySupervisedClassifier(nn.Module):
 
         self.classifier = nn.Linear(hidden_dim, self.num_classes)
 
-    # TODO: batch-ify this
     def forward(self, batch):
-        batch_size = batch["embed"].shape[0]
         masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
+        batch_size = batch["embed"].shape[0]
+        num_actual_masks = [mask.shape[0] for mask in masks]  # Number of actual (non-padded) predicted masks per image.
 
-        class_logits = torch.zeros((batch_size, self.pad_num, self.num_classes))
-        for i, feature in enumerate(mask_features):
-            x = self.layers(feature)
-            x = self.classifier(x)
-            # Pad the logits with extremely low values to be able to stack them in a single tensor.
-            # Necessary since the amount of found masks is not constant across images.
-            class_logits[i] = F.pad(x, (0, 0, 0, self.pad_num - x.shape[0]), "constant", -1000)
+        x = self.layers(mask_features)
+        class_logits = self.classifier(x)
+
+        # Change the logits for the padded features with extremely low values.
+        # Necessary for batched processing since the amount of found masks is not constant across images.
+        for i in range(batch_size):  # TODO: can you do this without the for-loop?
+            pad_logits = torch.ones(self.pad_num - num_actual_masks[i], self.num_classes) * -1000
+            class_logits[i, num_actual_masks[i] :] = pad_logits
 
         return {
             "masks": masks,
@@ -43,33 +44,33 @@ class FullySupervisedClassifier(nn.Module):
             "iou_scores": iou_scores,
         }
 
+    @torch.no_grad()
     def get_mask_features(self, batch):
         batch_size = batch["embed"].shape[0]
+
         masks = []
         boxes = torch.zeros((batch_size, self.pad_num, 4))
-        mask_features = []
-        # mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim))
+        # mask_features = []
+        mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim))
         iou_scores = torch.zeros((batch_size, self.pad_num))
 
         # TODO: batch-ify this.
         for i in range(batch_size):
             # TODO: make this torch tensors from the get-go to avoid torch.stack calls
             batch_masks = []
-            batch_mask_features = []
-            # batch_iou_scores = torch.zeros((self.pad_num))
+            # batch_mask_features = []
 
-            with torch.no_grad():
-                sam_output = self.sam_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
+            sam_output = self.sam_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
             for j, mask in enumerate(sam_output):
                 batch_masks.append(torch.as_tensor(mask["segmentation"]))
                 boxes[i, j] = torch.as_tensor(mask["bbox"])
-                # mask_features[i, j] = torch.as_tensor(mask["mask_feature"])
-                batch_mask_features.append(torch.as_tensor(mask["mask_feature"]))
+                mask_features[i, j] = torch.as_tensor(mask["mask_feature"])
+                # batch_mask_features.append(torch.as_tensor(mask["mask_feature"]))
                 iou_scores[i, j] = mask["predicted_iou"]
 
             masks.append(torch.stack(batch_masks))
-            mask_features.append(torch.stack(batch_mask_features))
+            # mask_features.append(torch.stack(batch_mask_features))
 
         return masks, boxes, mask_features, iou_scores
 
