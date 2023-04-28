@@ -22,10 +22,10 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
-        self.model = self.load_model()
-        self.criterion = self.set_criterion()
+        self.model = self.load_model(device)
+        self.criterion = self.set_criterion(device)
         self.map = MeanAveragePrecision(bbox_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
 
         self.validation_step_gt = []
@@ -61,18 +61,22 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         return optimizer
 
-    def load_model(self):
+    def load_model(self, device):
         sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
 
         mask_generator = OWSamMaskGenerator(sam)
 
         model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
-        sam.to(device=self.device)  # Only do this after the mask decoder has been changed by the generator!
-        model.to(self.device)
+        sam.to(device=device)  # Only do this after the mask decoder has been changed by the generator!
+        model.to(device)
+
+        # self.model.sam_generator.predictor.model.to(device)
+        # self.model.sam_generator.predictor.model.prompt_encoder.to(device)
+        # self.model.sam_generator.predictor.model.mask_decoder.to(device)
 
         return model
 
-    def set_criterion(self):
+    def set_criterion(self, device):
         """Use the DETR loss (but only the classification part)."""
         eos_coef = 0.1
         weight_dict = {"loss_ce": 1, "loss_bbox": 5}
@@ -84,7 +88,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         criterion = SetCriterion(
             self.model.num_classes - 1, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
         )
-        criterion.to(self.device)
+        criterion.to(device)
 
         return criterion
 
@@ -170,7 +174,7 @@ if __name__ == "__main__":
 
     dataloader_train, dataloader_val = load_data()
 
-    model = LitFullySupervisedClassifier()
+    model = LitFullySupervisedClassifier(config.device)
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
