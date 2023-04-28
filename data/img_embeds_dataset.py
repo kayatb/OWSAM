@@ -50,8 +50,16 @@ class ImageEmbeds(torch.utils.data.Dataset):
             "original_size": img_data["orig_size"],
             "targets": targets,
             "img_id": img_id,
-            "point_coords": point_coords.unsqueeze(0),
-            "point_labels": point_labels.unsqueeze(0),
+            # "boxes": torch.tensor(
+            #     [
+            #         [75, 275, 1725, 850],
+            #         [425, 600, 700, 875],
+            #         [1375, 550, 1650, 800],
+            #         [1240, 675, 1400, 750],
+            #     ]
+            # )
+            "point_coords": point_coords,
+            "point_labels": point_labels,
         }
 
     def __len__(self):

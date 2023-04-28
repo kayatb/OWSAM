@@ -68,7 +68,10 @@ class OWSam(Sam):
         outputs = []
         for image_record, curr_embedding in zip(batched_input, image_embeddings):
             if "point_coords" in image_record:
-                points = (image_record["point_coords"], image_record["point_labels"])
+                points = (
+                    image_record["point_coords"][:, None, :],
+                    image_record["point_labels"][:, None],
+                )
             else:
                 points = None
             sparse_embeddings, dense_embeddings = self.prompt_encoder(
@@ -112,10 +115,13 @@ if __name__ == "__main__":
     sam = build_owsam(checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device=device)
 
-    dataset = ImageEmbeds("img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=ImageEmbeds.collate_fn)
+    dataset = ImageEmbeds(
+        "img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device, points_per_side=2
+    )
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
 
     for batch in dataloader:
         outputs = sam(batch, multimask_output=False)
         print(len(outputs))
-        print(outputs[0]["masks"].shape)
+        for output in outputs:
+            print(output["masks"].shape)
