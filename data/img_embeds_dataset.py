@@ -50,8 +50,8 @@ class ImageEmbeds(torch.utils.data.Dataset):
             "original_size": img_data["orig_size"],
             "targets": targets,
             "img_id": img_id,
-            "point_coords": point_coords,
-            "point_labels": point_labels,
+            "point_coords": point_coords.unsqueeze(0),
+            "point_labels": point_labels.unsqueeze(0),
         }
 
     def __len__(self):
@@ -95,21 +95,22 @@ class ImageEmbeds(torch.utils.data.Dataset):
 
     @staticmethod
     def collate_fn(data):
-        embeds = torch.stack([d["embed"] for d in data])
-        original_sizes = [d["original_size"] for d in data]
-        img_ids = [d["img_id"] for d in data]
-        targets = [d["targets"] for d in data]
-        point_coords = torch.stack([d["point_coords"] for d in data])
-        point_labels = torch.stack([d["point_labels"] for d in data])
+        return data
+        # embeds = torch.stack([d["embed"] for d in data])
+        # original_sizes = [d["original_size"] for d in data]
+        # img_ids = [d["img_id"] for d in data]
+        # targets = [d["targets"] for d in data]
+        # point_coords = torch.stack([d["point_coords"] for d in data])
+        # point_labels = torch.stack([d["point_labels"] for d in data])
 
-        return {
-            "embed": embeds,
-            "original_size": original_sizes,
-            "img_id": img_ids,
-            "targets": targets,
-            "point_coords": point_coords,
-            "point_labels": point_labels,
-        }
+        # return {
+        #     "embed": embeds,
+        #     "original_size": original_sizes,
+        #     "img_id": img_ids,
+        #     "targets": targets,
+        #     "point_coords": point_coords,
+        #     "point_labels": point_labels,
+        # }
 
 
 if __name__ == "__main__":
