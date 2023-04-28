@@ -22,11 +22,11 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self, model):
+    def __init__(self):
         super().__init__()
-        self.model = model
-        self.map = MeanAveragePrecision(bbox_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
+        self.model = self.load_model()
         self.criterion = self.set_criterion()
+        self.map = MeanAveragePrecision(bbox_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
 
         self.validation_step_gt = []
         self.validation_step_pred = []
@@ -60,6 +60,17 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
 
         return optimizer
+
+    def load_model(self):
+        sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
+
+        mask_generator = OWSamMaskGenerator(sam)
+
+        model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
+        sam.to(device=self.device)  # Only do this after the mask decoder has been changed by the generator!
+        model.to(self.device)
+
+        return model
 
     def set_criterion(self):
         """Use the DETR loss (but only the classification part)."""
@@ -143,18 +154,6 @@ def load_data():
     return dataloader_train, dataloader_val
 
 
-def load_model():
-    sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
-
-    mask_generator = OWSamMaskGenerator(sam)
-
-    model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
-    sam.to(device=config.device)  # Only do this after the mask decoder has been changed by the generator!
-    model.to(config.device)
-
-    return model
-
-
 if __name__ == "__main__":
     args = parse_args()
 
@@ -171,8 +170,7 @@ if __name__ == "__main__":
 
     dataloader_train, dataloader_val = load_data()
 
-    model = load_model()
-    model = LitFullySupervisedClassifier(model)
+    model = LitFullySupervisedClassifier()
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
