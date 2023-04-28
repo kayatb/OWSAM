@@ -1,14 +1,18 @@
 import utils.coco_ids_without_anns as empty_ids
 
+from segment_anything.utils.amg import build_all_layer_point_grids
+from segment_anything.utils.transforms import ResizeLongestSide
+
 import torch
 import os
 from pycocotools.coco import COCO
+import numpy as np
 
 
 class ImageEmbeds(torch.utils.data.Dataset):
     """Load the pre-extracted image embeddings into a torch Dataset."""
 
-    def __init__(self, dir, ann_file, device):
+    def __init__(self, dir, ann_file, device, points_per_side=32):
         """Load the image embeddings from `dir`."""
         self.dir = dir
         self.files = ImageEmbeds.filter_empty_imgs(os.listdir(dir))
@@ -27,6 +31,9 @@ class ImageEmbeds(torch.utils.data.Dataset):
             self.cat_id_to_continuous[id] = i + 1  # Start the classes at 1, to keep 0 as the no-object class.
             self.continuous_to_cat_id[i + 1] = id
 
+        self.point_grids = build_all_layer_point_grids(points_per_side, 0, 1)
+        self.transform = ResizeLongestSide(1024)
+
     def __getitem__(self, idx):
         """Returns the image embedding (256 x 64 x 64), the original image size (W x H), the image file name,
         and a grid of point coordinates and labels to use as prompts for SAM."""
@@ -36,11 +43,15 @@ class ImageEmbeds(torch.utils.data.Dataset):
         img_id = int(os.path.splitext(self.files[idx])[0])
         targets = self.get_coco_targets(img_id)
 
+        point_coords, point_labels = self.make_points(img_data["orig_size"])
+
         return {
             "embed": img_data["embed"],
             "original_size": img_data["orig_size"],
             "targets": targets,
             "img_id": img_id,
+            "point_coords": point_coords,
+            "point_labels": point_labels,
         }
 
     def __len__(self):
@@ -72,14 +83,33 @@ class ImageEmbeds(torch.utils.data.Dataset):
             filtered_files.append(file)
         return filtered_files
 
+    def make_points(self, orig_size):
+        points_scale = np.array(orig_size)[None, ::-1]
+        points_for_image = self.point_grids[0] * points_scale
+
+        transformed_points = self.transform.apply_coords(points_for_image, orig_size)
+        in_points = torch.as_tensor(transformed_points, device=self.device)
+        in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
+
+        return in_points, in_labels
+
     @staticmethod
     def collate_fn(data):
         embeds = torch.stack([d["embed"] for d in data])
         original_sizes = [d["original_size"] for d in data]
         img_ids = [d["img_id"] for d in data]
         targets = [d["targets"] for d in data]
+        point_coords = torch.stack([d["point_coords"] for d in data])
+        point_labels = torch.stack([d["point_labels"] for d in data])
 
-        return {"embed": embeds, "original_size": original_sizes, "img_id": img_ids, "targets": targets}
+        return {
+            "embed": embeds,
+            "original_size": original_sizes,
+            "img_id": img_ids,
+            "targets": targets,
+            "point_coords": point_coords,
+            "point_labels": point_labels,
+        }
 
 
 if __name__ == "__main__":
@@ -89,6 +119,7 @@ if __name__ == "__main__":
     # print(dataset.continuous_to_cat_id)
     # print(dataset.cat_id_to_name)
     for batch in dataloader:
-        # print(batch["embed"].shape)
+        print(batch["point_coords"].shape)
+        print(batch["point_labels"].shape)
         # print(batch["original_size"])
-        print(batch["targets"])
+        # print(batch["targets"])
