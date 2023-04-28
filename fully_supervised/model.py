@@ -5,7 +5,7 @@ import torch.nn as nn
 class FullySupervisedClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
-    def __init__(self, sam_generator, num_layers, hidden_dim, num_classes, pad_num=200, input_dim=256):
+    def __init__(self, sam_generator, num_layers, hidden_dim, num_classes, pad_num=500, input_dim=256):
         super().__init__()
 
         self.num_classes = num_classes + 1  # +1 for the backrground/no-object class.
@@ -49,13 +49,14 @@ class FullySupervisedClassifier(nn.Module):
         """Get the output (i.e. masks, bounding boxes, mask features, etc.) from SAM.
         Pad everything to a uniform shape for batched processing."""
         batch_size = batch["embed"].shape[0]
+        device = batch["embed"].device
 
         masks = []
         # Ensure all images end up with outputs of the same size, even though SAM outputs a different number of masks
         # for each image. The last few boxes, features, and IoU scores for each image are padding.
-        boxes = torch.zeros((batch_size, self.pad_num, 4))
-        mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim))
-        iou_scores = -torch.ones((batch_size, self.pad_num))
+        boxes = torch.zeros((batch_size, self.pad_num, 4), device=device)
+        mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim), device=device)
+        iou_scores = -torch.ones((batch_size, self.pad_num), device=device)
 
         # TODO: batch-ify this.
         for i in range(batch_size):

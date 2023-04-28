@@ -13,13 +13,13 @@ ann_val = "../datasets/coco/annotations/instances_val2017.json"
 embeds_train = "img_embeds"
 embeds_val = "img_embeds"
 num_classes = 80
-batch_size = 2
-num_workers = 12
+batch_size = 1
+num_workers = 0
 
 checkpoint_dir = "checkpoints"
 log_dir = "tensorboard_logs"
 
-device = "cpu"
+device = "cuda"
 assert device in ("cpu", "cuda")
 num_devices = 1
 seed = 29
