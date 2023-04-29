@@ -29,7 +29,7 @@ class ImageEmbeds(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         """Returns the image embedding (256 x 64 x 64), the original image size (W x H), the image file name,
-        and a grid of point coordinates and labels to use as prompts for SAM."""
+        and the targets (class labels and segmentation masks) from the COCO dataset."""
         file_path = os.path.join(self.dir, self.files[idx])
         img_data = torch.load(file_path, map_location=self.device)
 
