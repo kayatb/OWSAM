@@ -355,8 +355,8 @@ if __name__ == "__main__":
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device=device)
 
-    dataset = ImageEmbeds("img_embeds", sam.device)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=ImageEmbeds.collate_fn)
+    dataset = ImageEmbeds("img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
 
     mask_generator = OWSamMaskGenerator(sam)
 

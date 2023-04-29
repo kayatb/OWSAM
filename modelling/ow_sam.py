@@ -1,9 +1,11 @@
 from modelling.sam_mask_generator import OWMaskDecoder
 from segment_anything.modeling import ImageEncoderViT, PromptEncoder, Sam, TwoWayTransformer
 from segment_anything.utils.transforms import ResizeLongestSide
+from segment_anything.utils.amg import batch_iterator, batched_mask_to_box, box_xyxy_to_xywh
 
 import torch
 from functools import partial
+import numpy as np
 
 
 def build_owsam(checkpoint="checkpoints/sam_vit_h_4b8939.pth"):
@@ -64,44 +66,64 @@ class OWSam(Sam):
     def forward(self, batched_input, multimask_output):
         self.transform = ResizeLongestSide(1024)  # TODO: move this to __init__
         image_embeddings = torch.stack([d["embed"] for d in batched_input], dim=0)
+        batch_size = len(batched_input)
+        num_preds = 1024  # TODO: don't hardcode this (point_coords.shape[0])
+        device = image_embeddings.device
 
         outputs = []
         for image_record, curr_embedding in zip(batched_input, image_embeddings):
-            if "point_coords" in image_record:
-                points = (
-                    image_record["point_coords"][:, None, :],
-                    image_record["point_labels"][:, None],
-                )
-            else:
-                points = None
-            sparse_embeddings, dense_embeddings = self.prompt_encoder(
-                points=points,
-                boxes=image_record.get("boxes", None),
-                masks=image_record.get("mask_inputs", None),
-            )
-            low_res_masks, iou_predictions, mask_features = self.mask_decoder(
-                image_embeddings=curr_embedding.unsqueeze(0),
-                image_pe=self.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-                multimask_output=multimask_output,
-            )
+            # boxes = [torch.zeros((batch_size, num_preds, 4), device=device)]
+            # mask_features = torch.zeros((batch_size, num_preds, 256), device=device)  # Don't hardcode mask feature dim
+            # iou_predictions = -torch.ones((batch_size, num_preds), device=device)
+            # masks = torch.zeros((batch_size, num_preds, image_record["original_size"]), device=device)
+            batch_mask_features = []
+            batch_iou_predictions = []
+            batch_masks = []
+            batch_boxes = []
 
-            input_size = self.transform.get_preprocess_shape(
-                image_record["original_size"][0], image_record["original_size"][1], self.transform.target_length
-            )
-            masks = self.postprocess_masks(
-                low_res_masks,
-                input_size=input_size,
-                original_size=image_record["original_size"],
-            )
-            masks = masks > self.mask_threshold
+            for p in batch_iterator(64, image_record["point_coords"]):  # TODO: don't hardcode points per batch
+                point_coords = torch.cat(p)
+
+                points = (
+                    point_coords[:, None, :],  # points[:, None, :],
+                    torch.ones(point_coords.shape[0], dtype=torch.int, device=device)[:, None],
+                )
+
+                sparse_embeddings, dense_embeddings = self.prompt_encoder(
+                    points=points,
+                    boxes=None,
+                    masks=None,
+                )
+                low_res_masks, iou_predictions, mask_features = self.mask_decoder(
+                    image_embeddings=curr_embedding.unsqueeze(0),
+                    image_pe=self.prompt_encoder.get_dense_pe(),
+                    sparse_prompt_embeddings=sparse_embeddings,
+                    dense_prompt_embeddings=dense_embeddings,
+                    multimask_output=multimask_output,
+                )
+
+                input_size = self.transform.get_preprocess_shape(
+                    image_record["original_size"][0], image_record["original_size"][1], self.transform.target_length
+                )
+                masks = self.postprocess_masks(
+                    low_res_masks,
+                    input_size=input_size,
+                    original_size=image_record["original_size"],
+                )
+                masks = masks > self.mask_threshold
+                boxes = batched_mask_to_box(masks)
+
+                batch_mask_features.append(mask_features)
+                batch_iou_predictions.append(iou_predictions)
+                batch_masks.append(masks)
+                batch_boxes.append(boxes)
+
             outputs.append(
                 {
-                    "masks": masks,
-                    "iou_predictions": iou_predictions,
-                    "low_res_logits": low_res_masks,
-                    "mask_features": mask_features,
+                    "masks": batch_masks,
+                    "iou_predictions": torch.stack(batch_iou_predictions),
+                    "mask_features": torch.stack(batch_mask_features),
+                    "boxes": torch.stack([box_xyxy_to_xywh(box) for box in batch_boxes]),
                 }
             )
         return outputs
@@ -116,7 +138,7 @@ if __name__ == "__main__":
     sam.to(device=device)
 
     dataset = ImageEmbeds(
-        "img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device, points_per_side=2
+        "img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device, points_per_side=32
     )
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
 
@@ -124,4 +146,4 @@ if __name__ == "__main__":
         outputs = sam(batch, multimask_output=False)
         print(len(outputs))
         for output in outputs:
-            print(output["masks"].shape)
+            print(output["mask_features"].shape)
