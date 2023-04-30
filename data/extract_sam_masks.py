@@ -67,12 +67,12 @@ if __name__ == "__main__":
     device = "cuda" if args.gpu else "cpu"
 
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
-    sam.to(device=device)
 
     dataset = ImageEmbeds(args.embed_dir, args.image_dir, device)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=ImageEmbeds.collate_fn)
 
     mask_generator = OWSamMaskGenerator(sam)
+    sam.to(device=device)  # Should be done after the decoder has been changed by the mask generator
 
     save_all_masks(mask_generator, dataloader, args.save_dir)
     # with tarfile.open("mask_features/459195.tar.gz", "r") as fp:
