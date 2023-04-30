@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 def parse_args():
     parser = argparse.ArgumentParser(
         prog="SAMFeatureExtractor",
-        description="Extract mask features from SAM for given COCO dataset",
+        description="Extract image embeddings from SAM for given COCO dataset",
     )
     parser.add_argument(
         "-d",

@@ -365,5 +365,6 @@ if __name__ == "__main__":
             masks = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
 
             print(len(masks))
-            for mask in masks:
-                print(mask["mask_feature"].shape)
+            print(masks[0].keys())
+            # for mask in masks:
+            #     print(mask["mask_feature"].shape)

@@ -1,6 +1,7 @@
 segment-anything
 checkpoints/
 img_embeds/
+mask_features/
 tensorboard_logs/
 *.jpg
 *.zip
