@@ -77,6 +77,7 @@ class MaskData(torch.utils.data.Dataset):
         """Get the COCO annotations belonging to the image embedding.
         Convert the annotation to the format expected by the criterion."""
         ann_ids = self.coco.getAnnIds(imgIds=[img_id], iscrowd=None)
+        assert len(ann_ids) > 0, f"No annotations found for image `{img_id}`. Check the annotation file."
         anns = self.coco.loadAnns(ann_ids)
 
         targets = {}

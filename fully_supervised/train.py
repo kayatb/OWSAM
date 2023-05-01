@@ -1,9 +1,7 @@
 import configs.fully_supervised as config
-from data.img_embeds_dataset import ImageEmbeds
-from modelling.sam_mask_generator import OWSamMaskGenerator
+from data.mask_feature_dataset import MaskData
 from fully_supervised.model import FullySupervisedClassifier
 
-from segment_anything import sam_model_registry
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
 
@@ -62,17 +60,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
-
-        mask_generator = OWSamMaskGenerator(sam)
-
-        model = FullySupervisedClassifier(mask_generator, config.num_layers, config.hidden_dim, config.num_classes)
-        sam.to(device=device)  # Only do this after the mask decoder has been changed by the generator!
+        model = FullySupervisedClassifier(config.num_layers, config.hidden_dim, config.num_classes)
         model.to(device)
-
-        # self.model.sam_generator.predictor.model.to(device)
-        # self.model.sam_generator.predictor.model.prompt_encoder.to(device)
-        # self.model.sam_generator.predictor.model.mask_decoder.to(device)
 
         return model
 
@@ -136,14 +125,14 @@ def parse_args():
 
 
 def load_data():
-    dataset_train = ImageEmbeds(config.embeds_train, config.ann_train, config.device)
-    dataset_val = ImageEmbeds(config.embeds_val, config.ann_val, config.device)
+    dataset_train = MaskData(config.masks_train, config.ann_train, config.device)
+    dataset_val = MaskData(config.masks_val, config.ann_val, config.device)
 
     dataloader_train = DataLoader(
         dataset_train,
         batch_size=config.batch_size,
         shuffle=True,
-        collate_fn=ImageEmbeds.collate_fn,
+        collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
     )
 
@@ -151,7 +140,7 @@ def load_data():
         dataset_val,
         batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=ImageEmbeds.collate_fn,
+        collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
     )
 
