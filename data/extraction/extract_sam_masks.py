@@ -1,4 +1,5 @@
 from data.img_embeds_dataset import ImageEmbeds
+from data.image_dataset import ImageDataset
 from modelling.sam_mask_generator import OWSamMaskGenerator
 
 from segment_anything import sam_model_registry
@@ -21,7 +22,9 @@ def parse_args():
         prog="SAMFeatureExtractor",
         description="Extract mask features from SAM for given COCO dataset",
     )
-    parser.add_argument("-e", "--embed-dir", required=True, help="Dir of the pre-extracted image embeddings")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-e", "--embed-dir", help="Dir of the pre-extracted image embeddings")
+    group.add_argument("-i", "--image-dir", help="Dir of the images.")
     parser.add_argument(
         "-s",
         "--save-dir",
@@ -54,22 +57,45 @@ def save_all_masks(mask_generator, dataloader, save_dir):
                 fp.write(buffer.read())
 
 
+def save_all_masks_without_embeds(model, mask_generator, dataloader, save_dir):
+    os.makedirs(save_dir, exist_ok=True)
+
+    for batch in tqdm(dataloader):
+        img_embeds = model.image_encoder(batch["img"].to(model.device))
+        # batch contains {"img", "orig_h", "orig_w", "fname"}
+        batch_size = batch["img"].shape[0]
+        for i in range(batch_size):
+            img_id = int(batch["fname"][i])
+            orig_size = (batch["orig_w"][i].item(), batch["orig_h"][i].item())
+            output = mask_generator.generate(img_embeds[i].unsqueeze(0), orig_size)
+            # output is a list of dicts (one for each mask generated for that image), with keys:
+            # 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
+            # For each image, save a tar file with all the masks. The tar file has the img_id as filename.
+            # with tarfile.open(f"{batch["img_id"]}.tar.gz", "w:gz") as fp:
+            buffer = io.BytesIO()
+            torch.save(output, buffer)
+
+            with gzip.open(os.path.join(save_dir, f"{img_id}.gz"), "wb") as fp:
+                buffer.seek(0)
+                fp.write(buffer.read())
+
+
 if __name__ == "__main__":
     args = parse_args()
     device = "cuda" if args.gpu else "cpu"
 
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
 
-    dataset = ImageEmbeds(args.embed_dir, device)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=ImageEmbeds.collate_fn)
-
     mask_generator = OWSamMaskGenerator(sam)
     sam.to(device=device)  # Should be done after the decoder has been changed by the mask generator
 
-    save_all_masks(mask_generator, dataloader, args.save_dir)
-
-    # with gzip.open("mask_features/459195.gz", "rb") as fp:
-    #     content = fp.read()
-    # t = torch.load(io.BytesIO(content))
-    # print(len(t))
-    # print(t[0].keys())
+    if args.embed_dir:
+        print("EMBEDDING")
+        dataset = ImageEmbeds(args.embed_dir, device)
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=ImageEmbeds.collate_fn)
+        save_all_masks(mask_generator, dataloader, args.save_dir)
+    else:
+        print("IMAGES")
+        dataset = ImageDataset(args.embed_dir)
+        dataloader = DataLoader(dataset, batch_size=args.batch_size)
+        save_all_masks_without_embeds(sam, mask_generator, dataloader, args.save_dir)
