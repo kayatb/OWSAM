@@ -24,11 +24,11 @@ class FullySupervisedClassifier(nn.Module):
         self.classifier = nn.Linear(hidden_dim, self.num_classes)
 
     def forward(self, batch):
-        masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
-        batch_size = batch["embed"].shape[0]
-        num_actual_masks = [mask.shape[0] for mask in masks]  # Number of actual (non-padded) predicted masks per image.
+        # masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
+        batch_size = batch["boxes"].shape[0]
+        num_actual_masks = batch["num_masks"]  # Number of actual (non-padded) predicted masks per image.
 
-        x = self.layers(mask_features)
+        x = self.layers(batch["mask_features"])
         class_logits = self.classifier(x)
 
         # Change the logits for the padded features with extremely low values.
@@ -38,46 +38,16 @@ class FullySupervisedClassifier(nn.Module):
             class_logits[i, num_actual_masks[i] :] = pad_logits
 
         return {
-            "masks": masks,
+            "masks": batch["masks"],
             "pred_logits": class_logits,
-            "pred_boxes": boxes,
-            "iou_scores": iou_scores,  # Used for mAP calculation
+            "pred_boxes": batch["boxes"],
+            "iou_scores": batch["iou_scores"],  # Used for mAP calculation
         }
-
-    @torch.no_grad()
-    def get_mask_features(self, batch):
-        """Get the output (i.e. masks, bounding boxes, mask features, etc.) from SAM.
-        Pad everything to a uniform shape for batched processing."""
-        batch_size = batch["embed"].shape[0]
-        device = batch["embed"].device
-
-        masks = []
-        # Ensure all images end up with outputs of the same size, even though SAM outputs a different number of masks
-        # for each image. The last few boxes, features, and IoU scores for each image are padding.
-        boxes = torch.zeros((batch_size, self.pad_num, 4), device=device)
-        mask_features = torch.zeros((batch_size, self.pad_num, self.input_dim), device=device)
-        iou_scores = -torch.ones((batch_size, self.pad_num), device=device)
-
-        # TODO: batch-ify this.
-        for i in range(batch_size):
-            batch_masks = []
-
-            sam_output = self.sam_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
-
-            for j, mask in enumerate(sam_output):
-                batch_masks.append(torch.as_tensor(mask["segmentation"]))
-                boxes[i, j] = torch.as_tensor(mask["bbox"])
-                mask_features[i, j] = torch.as_tensor(mask["mask_feature"])
-                iou_scores[i, j] = mask["predicted_iou"]
-
-            masks.append(torch.stack(batch_masks))
-
-        return masks, boxes, mask_features, iou_scores
 
 
 if __name__ == "__main__":
     from segment_anything import sam_model_registry
-    from data.img_embeds_dataset import ImageEmbeds
+    from data.mask_feature_dataset import MaskData
     from modelling.sam_mask_generator import OWSamMaskGenerator
 
     device = "cpu"
@@ -85,8 +55,8 @@ if __name__ == "__main__":
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device=device)
 
-    dataset = ImageEmbeds("img_embeds", "../datasets/coco/annotations/instances_val2017.json", sam.device)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageEmbeds.collate_fn)
+    dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_val2017.json", "cpu")
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=MaskData.collate_fn)
 
     mask_generator = OWSamMaskGenerator(sam)
 
