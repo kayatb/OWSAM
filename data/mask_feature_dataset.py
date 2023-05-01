@@ -43,7 +43,8 @@ class MaskData(torch.utils.data.Dataset):
         # The number of masks outputted by SAM is not constant, so pad with
         # empty values.
         boxes = torch.zeros((self.pad_num, 4))
-        mask_features = torch.zeros((self.pad_num, 256))
+        # mask_features = torch.zeros((self.pad_num, 256))
+        mask_features = torch.zeros((len(mask_data), 256))
         iou_scores = -torch.ones((self.pad_num))
 
         for i, mask in enumerate(mask_data):
@@ -92,7 +93,7 @@ class MaskData(torch.utils.data.Dataset):
     def collate_fn(data):
         masks = [d["masks"] for d in data]
         boxes = torch.stack([d["boxes"] for d in data])
-        mask_features = torch.stack([d["mask_features"] for d in data])
+        mask_features = torch.cat([d["mask_features"] for d in data])
         iou_scores = torch.stack([d["iou_scores"] for d in data])
         num_masks = [d["num_masks"] for d in data]
         img_ids = [d["img_id"] for d in data]

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class FullySupervisedClassifier(nn.Module):
@@ -24,20 +25,24 @@ class FullySupervisedClassifier(nn.Module):
     def forward(self, batch):
         # masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
         batch_size = batch["boxes"].shape[0]
-        num_actual_masks = batch["num_masks"]  # Number of actual (non-padded) predicted masks per image.
 
         x = self.layers(batch["mask_features"])
         class_logits = self.classifier(x)
 
-        # Change the logits for the padded features with extremely low values.
-        # Necessary for batched processing since the amount of found masks is not constant across images.
-        for i in range(batch_size):  # TODO: can you do this without the for-loop?
-            pad_logits = torch.ones(self.pad_num - num_actual_masks[i], self.num_classes) * -1000
-            class_logits[i, num_actual_masks[i] :] = pad_logits
+        # Split the class logits per image.
+        class_logits = torch.split(class_logits, batch["num_masks"])
+        padded_class_logits = torch.empty(batch_size, self.pad_num, self.num_classes)
+        # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
+        # Pad each image's logits with extremely low values to make the shape uniform
+        # across images.
+        for i in range(batch_size):  # TODO: can you do this without a for-loop?
+            padded_class_logits[i] = F.pad(
+                class_logits[i], (0, 0, 0, self.pad_num - class_logits[i].shape[0]), mode="constant", value=-1000
+            )
 
         return {
             "masks": batch["masks"],
-            "pred_logits": class_logits,
+            "pred_logits": padded_class_logits,
             "pred_boxes": batch["boxes"],
             "iou_scores": batch["iou_scores"],  # Used for mAP calculation
         }
