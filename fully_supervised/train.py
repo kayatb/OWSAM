@@ -33,8 +33,24 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
 
-        self.log("train_class_error", loss["class_error"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_loss_ce", loss["loss"], on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "train_class_error",
+            loss["class_error"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        self.log(
+            "train_loss_ce",
+            loss["loss"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
         return loss
 
@@ -42,8 +58,24 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
 
-        self.log("val_class_error", loss["class_error"], on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log("val_loss_ce", loss["loss"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "val_class_error",
+            loss["class_error"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+            logger=True,
+        )
+        self.log(
+            "val_loss_ce",
+            loss["loss"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
         pred_metric_input = self.get_map_format(outputs)
         self.map.update(pred_metric_input, batch["targets"])
@@ -134,6 +166,7 @@ def load_data():
         shuffle=True,
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
+        persistent_workers=True,
     )
 
     dataloader_val = DataLoader(
@@ -142,6 +175,7 @@ def load_data():
         shuffle=False,
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
+        persistent_workers=True,
     )
 
     return dataloader_train, dataloader_val
@@ -174,11 +208,11 @@ if __name__ == "__main__":
         filename="best_model_{epoch}",
     )
     checkpoint_callback = ModelCheckpoint(dirpath=config.checkpoint_dir, every_n_epochs=config.save_every)
-    lr_monitor = LearningRateMonitor(logging_interval="step")
+    # lr_monitor = LearningRateMonitor(logging_interval="step")
     # model_summary = ModelSummary()
 
     trainer = pl.Trainer(
-        # fast_dev_run=True,
+        # fast_dev_run=3,
         # limit_train_batches=0.5,  # FIXME: remove this for actual training!
         # limit_val_batches=0.5,
         default_root_dir=config.checkpoint_dir,
@@ -193,9 +227,10 @@ if __name__ == "__main__":
         callbacks=[
             best_checkpoint_callback,
             checkpoint_callback,
-            lr_monitor,
+            # lr_monitor,
             # model_summary,
         ],
+        # profiler="simple",
     )
 
     trainer.fit(model, dataloader_train, dataloader_val)

@@ -31,7 +31,9 @@ class FullySupervisedClassifier(nn.Module):
 
         # Split the class logits per image.
         class_logits = torch.split(class_logits, batch["num_masks"])
-        padded_class_logits = torch.empty(batch_size, self.pad_num, self.num_classes)
+        padded_class_logits = torch.empty(
+            batch_size, self.pad_num, self.num_classes, device=batch["mask_features"].device
+        )
         # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
         # Pad each image's logits with extremely low values to make the shape uniform
         # across images.
@@ -49,13 +51,9 @@ class FullySupervisedClassifier(nn.Module):
 
 
 if __name__ == "__main__":
-    from segment_anything import sam_model_registry
     from data.mask_feature_dataset import MaskData
 
     device = "cpu"
-
-    sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
-    sam.to(device=device)
 
     dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_val2017.json", "cpu")
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=MaskData.collate_fn)
