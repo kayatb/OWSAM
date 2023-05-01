@@ -8,10 +8,8 @@ import argparse
 import os
 import io
 
-# import tarfile
 import gzip
 
-# import numpy as np
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
@@ -59,6 +57,7 @@ def save_all_masks(mask_generator, dataloader, save_dir):
 
 def save_all_masks_without_embeds(model, mask_generator, dataloader, save_dir):
     os.makedirs(save_dir, exist_ok=True)
+    print(f"All mask features are saved in `{save_dir}`")
 
     for batch in tqdm(dataloader):
         img_embeds = model.image_encoder(batch["img"].to(model.device))
@@ -90,12 +89,12 @@ if __name__ == "__main__":
     sam.to(device=device)  # Should be done after the decoder has been changed by the mask generator
 
     if args.embed_dir:
-        print("EMBEDDING")
+        print("Start extraction of SAM masks from pre-calculated image embeddings...")
         dataset = ImageEmbeds(args.embed_dir, device)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=ImageEmbeds.collate_fn)
         save_all_masks(mask_generator, dataloader, args.save_dir)
     else:
-        print("IMAGES")
+        print("Start extraction of SAM masks without pre-calculated image embeddings...")
         dataset = ImageDataset(args.embed_dir)
         dataloader = DataLoader(dataset, batch_size=args.batch_size)
         save_all_masks_without_embeds(sam, mask_generator, dataloader, args.save_dir)
