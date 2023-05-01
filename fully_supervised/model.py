@@ -5,14 +5,12 @@ import torch.nn as nn
 class FullySupervisedClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
-    def __init__(self, sam_generator, num_layers, hidden_dim, num_classes, pad_num=500, input_dim=256):
+    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=500, input_dim=256):
         super().__init__()
 
         self.num_classes = num_classes + 1  # +1 for the backrground/no-object class.
         self.pad_num = pad_num
         self.input_dim = input_dim
-
-        self.sam_generator = sam_generator
 
         self.layers = nn.Sequential()
         self.layers.append(nn.Linear(input_dim, hidden_dim))
@@ -48,7 +46,6 @@ class FullySupervisedClassifier(nn.Module):
 if __name__ == "__main__":
     from segment_anything import sam_model_registry
     from data.mask_feature_dataset import MaskData
-    from modelling.sam_mask_generator import OWSamMaskGenerator
 
     device = "cpu"
 
@@ -58,9 +55,7 @@ if __name__ == "__main__":
     dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_val2017.json", "cpu")
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=MaskData.collate_fn)
 
-    mask_generator = OWSamMaskGenerator(sam)
-
-    model = FullySupervisedClassifier(mask_generator, 3, 100, 80)
+    model = FullySupervisedClassifier(3, 100, 80)
     model.to(device)
 
     for batch in dataloader:
