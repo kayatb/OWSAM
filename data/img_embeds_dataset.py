@@ -1,5 +1,3 @@
-import utils.coco_ids_without_anns as empty_ids
-
 import torch
 import os
 
@@ -10,7 +8,7 @@ class ImageEmbeds(torch.utils.data.Dataset):
     def __init__(self, dir, device):
         """Load the image embeddings from `dir`."""
         self.dir = dir
-        self.files = ImageEmbeds.filter_empty_imgs(os.listdir(dir))
+        self.files = os.listdir(dir)
         self.device = device
 
     def __getitem__(self, idx):
@@ -29,18 +27,6 @@ class ImageEmbeds(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.files)
-
-    @staticmethod
-    def filter_empty_imgs(files):
-        """Filter out image IDs for images that only contain the background class and
-        thus have no annotations."""
-        filtered_files = []
-        for file in files:
-            id = int(os.path.splitext(file)[0])
-            if id in empty_ids.train_ids or id in empty_ids.val_ids:
-                continue
-            filtered_files.append(file)
-        return filtered_files
 
     @staticmethod
     def collate_fn(data):

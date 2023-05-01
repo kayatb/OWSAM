@@ -1,3 +1,5 @@
+from utils.misc import filter_empty_imgs
+
 import torch
 import os
 import gzip
@@ -11,7 +13,7 @@ class MaskData(torch.utils.data.Dataset):
     def __init__(self, dir, ann_file, device, pad_num=500):
         """Load the masks and their features from `dir`."""
         self.dir = dir
-        self.files = os.listdir(dir)
+        self.files = filter_empty_imgs(os.listdir(dir))
         self.coco = COCO(ann_file)
         self.device = device
         self.pad_num = pad_num
