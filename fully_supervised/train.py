@@ -54,37 +54,37 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        outputs = self.model(batch)
-        loss = self.criterion(outputs, batch["targets"])
+    # def validation_step(self, batch, batch_idx):
+    #     outputs = self.model(batch)
+    #     loss = self.criterion(outputs, batch["targets"])
 
-        self.log(
-            "val_class_error",
-            loss["class_error"].item(),
-            batch_size=len(batch["masks"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-            logger=True,
-        )
-        self.log(
-            "val_loss_ce",
-            loss["loss"].item(),
-            batch_size=len(batch["masks"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+    #     self.log(
+    #         "val_class_error",
+    #         loss["class_error"].item(),
+    #         batch_size=len(batch["masks"]),
+    #         on_step=False,
+    #         on_epoch=True,
+    #         prog_bar=False,
+    #         logger=True,
+    #     )
+    #     self.log(
+    #         "val_loss_ce",
+    #         loss["loss"].item(),
+    #         batch_size=len(batch["masks"]),
+    #         on_step=False,
+    #         on_epoch=True,
+    #         prog_bar=True,
+    #         logger=True,
+    #     )
 
-        pred_metric_input = self.get_map_format(outputs)
-        self.map.update(pred_metric_input, batch["targets"])
+    #     pred_metric_input = self.get_map_format(outputs)
+    #     self.map.update(pred_metric_input, batch["targets"])
 
-    def on_validation_epoch_end(self):
-        mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-        self.print(mAPs)
-        self.log_dict(mAPs, sync_dist=True)
-        self.map.reset()
+    # def on_validation_epoch_end(self):
+    #     mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
+    #     self.print(mAPs)
+    #     self.log_dict(mAPs, sync_dist=True)
+    #     self.map.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)

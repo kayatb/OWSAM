@@ -9,7 +9,7 @@ class FullySupervisedClassifier(nn.Module):
     def __init__(self, num_layers, hidden_dim, num_classes, pad_num=500, input_dim=256):
         super().__init__()
 
-        self.num_classes = num_classes + 1  # +1 for the backrground/no-object class.
+        self.num_classes = num_classes
         self.pad_num = pad_num
         self.input_dim = input_dim
 
@@ -35,12 +35,17 @@ class FullySupervisedClassifier(nn.Module):
             batch_size, self.pad_num, self.num_classes + 1, device=batch["mask_features"].device
         )
         # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
-        # Pad each image's logits with extremely low values to make the shape uniform
-        # across images.
+        # Pad each image's logits with extremely low values (except no-object class)
+        # to make the shape uniform across images.
         for i in range(batch_size):  # TODO: can you do this without a for-loop?
-            padded_class_logits[i] = F.pad(
-                class_logits[i], (0, 0, 0, self.pad_num - class_logits[i].shape[0]), mode="constant", value=-1000
-            )
+            padding = torch.ones(self.num_classes + 1, device=batch["mask_features"].device) * -1000
+            padding[-1] = 1000  # Change prediction to no-object class
+            padding = padding.repeat(self.pad_num - class_logits[i].shape[0], 1)
+
+            # padded_class_logits[i] = F.pad(
+            #     class_logits[i], (0, 0, 0, self.pad_num - class_logits[i].shape[0]), mode="constant", value=-1000
+            # )
+            padded_class_logits[i] = torch.cat((class_logits[i], padding))
 
         return {
             "masks": batch["masks"],
