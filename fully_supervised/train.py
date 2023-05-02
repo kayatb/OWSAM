@@ -107,7 +107,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         matcher = HungarianMatcher()
         criterion = SetCriterion(
-            self.model.num_classes - 1, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
+            self.model.num_classes, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
         )
         criterion.to(device)
 
@@ -224,12 +224,12 @@ if __name__ == "__main__":
         max_epochs=config.epochs,
         # gradient_clip_val=config.clip,
         # gradient_clip_algorithm="value",
-        callbacks=[
-            best_checkpoint_callback,
-            checkpoint_callback,
-            # lr_monitor,
-            # model_summary,
-        ],
+        # callbacks=[
+        # best_checkpoint_callback,
+        # checkpoint_callback,
+        # lr_monitor,
+        # model_summary,
+        # ],
         # profiler="simple",
     )
 

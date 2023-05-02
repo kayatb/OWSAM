@@ -20,7 +20,7 @@ class FullySupervisedClassifier(nn.Module):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.layers.append(nn.ReLU())
 
-        self.classifier = nn.Linear(hidden_dim, self.num_classes)
+        self.classifier = nn.Linear(hidden_dim, self.num_classes + 1)  # +1 for the no-object class
 
     def forward(self, batch):
         # masks, boxes, mask_features, iou_scores = self.get_mask_features(batch)
@@ -32,7 +32,7 @@ class FullySupervisedClassifier(nn.Module):
         # Split the class logits per image.
         class_logits = torch.split(class_logits, batch["num_masks"])
         padded_class_logits = torch.empty(
-            batch_size, self.pad_num, self.num_classes, device=batch["mask_features"].device
+            batch_size, self.pad_num, self.num_classes + 1, device=batch["mask_features"].device
         )
         # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
         # Pad each image's logits with extremely low values to make the shape uniform
