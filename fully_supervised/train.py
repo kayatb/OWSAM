@@ -51,6 +51,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
+        # self.print(torch.argmax(outputs["pred_logits"], dim=2))
+        self.print(outputs["pred_boxes"])
 
         return loss
 
@@ -92,14 +94,17 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        model = FullySupervisedClassifier(config.num_layers, config.hidden_dim, config.num_classes)
+        model = FullySupervisedClassifier(
+            config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num
+        )
         model.to(device)
 
         return model
 
     def set_criterion(self, device):
         """Use the DETR loss (but only the classification part)."""
-        eos_coef = 0.1
+        # Default DETR values
+        eos_coef = 0.1  # Was 0.1
         weight_dict = {"loss_ce": 1, "loss_bbox": 5}
         weight_dict["loss_giou"] = 2
 
@@ -157,8 +162,8 @@ def parse_args():
 
 
 def load_data():
-    dataset_train = MaskData(config.masks_train, config.ann_train, config.device)
-    dataset_val = MaskData(config.masks_val, config.ann_val, config.device)
+    dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
+    dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
 
     dataloader_train = DataLoader(
         dataset_train,
