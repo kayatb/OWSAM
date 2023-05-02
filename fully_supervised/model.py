@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class FullySupervisedClassifier(nn.Module):
@@ -42,9 +41,6 @@ class FullySupervisedClassifier(nn.Module):
             padding[-1] = 1000  # Change prediction to no-object class
             padding = padding.repeat(self.pad_num - class_logits[i].shape[0], 1)
 
-            # padded_class_logits[i] = F.pad(
-            #     class_logits[i], (0, 0, 0, self.pad_num - class_logits[i].shape[0]), mode="constant", value=-1000
-            # )
             padded_class_logits[i] = torch.cat((class_logits[i], padding))
 
         return {

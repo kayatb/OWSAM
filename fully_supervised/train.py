@@ -24,7 +24,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         super().__init__()
         self.model = self.load_model(device)
         self.criterion = self.set_criterion(device)
-        self.map = MeanAveragePrecision(bbox_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
+        self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
 
         self.validation_step_gt = []
         self.validation_step_pred = []
@@ -51,42 +51,44 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        # self.print(torch.argmax(outputs["pred_logits"], dim=2))
-        self.print(outputs["pred_boxes"])
+        self.print(torch.argmax(outputs["pred_logits"], dim=2))
+        self.print(batch["targets"][0]["labels"])
 
         return loss
 
-    # def validation_step(self, batch, batch_idx):
-    #     outputs = self.model(batch)
-    #     loss = self.criterion(outputs, batch["targets"])
+    def validation_step(self, batch, batch_idx):
+        outputs = self.model(batch)
+        loss = self.criterion(outputs, batch["targets"])
 
-    #     self.log(
-    #         "val_class_error",
-    #         loss["class_error"].item(),
-    #         batch_size=len(batch["masks"]),
-    #         on_step=False,
-    #         on_epoch=True,
-    #         prog_bar=False,
-    #         logger=True,
-    #     )
-    #     self.log(
-    #         "val_loss_ce",
-    #         loss["loss"].item(),
-    #         batch_size=len(batch["masks"]),
-    #         on_step=False,
-    #         on_epoch=True,
-    #         prog_bar=True,
-    #         logger=True,
-    #     )
+        self.log(
+            "val_class_error",
+            loss["class_error"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+            logger=True,
+        )
+        self.log(
+            "val_loss_ce",
+            loss["loss"].item(),
+            batch_size=len(batch["masks"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
-    #     pred_metric_input = self.get_map_format(outputs)
-    #     self.map.update(pred_metric_input, batch["targets"])
+        pred_metric_input = self.get_map_format(outputs)
 
-    # def on_validation_epoch_end(self):
-    #     mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-    #     self.print(mAPs)
-    #     self.log_dict(mAPs, sync_dist=True)
-    #     self.map.reset()
+        self.map.update(preds=pred_metric_input, target=batch["targets"])
+        # print(self.map.compute())
+
+    def on_validation_epoch_end(self):
+        mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
+        self.print(mAPs)
+        self.log_dict(mAPs, sync_dist=True)
+        self.map.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
@@ -104,7 +106,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
     def set_criterion(self, device):
         """Use the DETR loss (but only the classification part)."""
         # Default DETR values
-        eos_coef = 0.1  # Was 0.1
+        eos_coef = 0.05  # Was 0.1
         weight_dict = {"loss_ce": 1, "loss_bbox": 5}
         weight_dict["loss_giou"] = 2
 
@@ -122,7 +124,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         """Convert the data to the format that the metric will accept:
         a list of dictionaries, where each dictionary corresponds to a single image.
         Args:
-            outputs: dict containing model outputs with keys `masks`, `pred_logits`, and `pred_boxes`
+            outputs: dict containing model outputs with keys `masks`, `pred_logits`, `iou_scores`, and `pred_boxes`
 
         Returns:
             pred_conv: list of dicts, where each dict contains `boxes`, `scores` and `labels`
@@ -130,11 +132,15 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         pred_conv = []
 
         for i in range(outputs["pred_logits"].shape[0]):  # Loop over the batches
-            pred_dict = {
-                "boxes": outputs["pred_boxes"][i],
-                "scores": outputs["iou_scores"][i],
-                "labels": torch.argmax(outputs["pred_logits"][i], dim=1),  # Get labels from the logits
-            }
+            labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
+
+            # Remove padded boxes and those that are predicted with no-object class.
+            concat = torch.cat(
+                (labels.unsqueeze(1), outputs["iou_scores"][i].unsqueeze(1), outputs["pred_boxes"][i]), dim=1
+            )
+            concat = concat[concat[:, 0] != 80]
+
+            pred_dict = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": concat[:, 0]}
             pred_conv.append(pred_dict)
 
         return pred_conv
@@ -229,14 +235,18 @@ if __name__ == "__main__":
         max_epochs=config.epochs,
         # gradient_clip_val=config.clip,
         # gradient_clip_algorithm="value",
-        # callbacks=[
-        # best_checkpoint_callback,
-        # checkpoint_callback,
-        # lr_monitor,
-        # model_summary,
-        # ],
+        callbacks=[
+            # best_checkpoint_callback,
+            checkpoint_callback,
+            # lr_monitor,
+            # model_summary,
+        ],
         # profiler="simple",
     )
 
-    trainer.fit(model, dataloader_train, dataloader_val)
-    # trainer.validate(model, dataloader_val)
+    # trainer.fit(model, dataloader_train, dataloader_val)
+
+    model = LitFullySupervisedClassifier.load_from_checkpoint(
+        "checkpoints/epoch=499-step=500.ckpt", device=config.device
+    )
+    trainer.validate(model, dataloader_val)
