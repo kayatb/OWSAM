@@ -5,7 +5,7 @@ import torch.nn as nn
 class FullySupervisedClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
-    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=500, input_dim=256):
+    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=700, input_dim=256):
         super().__init__()
 
         self.num_classes = num_classes

@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import (
     ModelCheckpoint,
-    LearningRateMonitor,
+    # LearningRateMonitor,
     # ModelSummary,
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
@@ -51,8 +51,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        self.print(torch.argmax(outputs["pred_logits"], dim=2))
-        self.print(batch["targets"][0]["labels"])
 
         return loss
 
@@ -82,7 +80,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         pred_metric_input = self.get_map_format(outputs)
 
         self.map.update(preds=pred_metric_input, target=batch["targets"])
-        # print(self.map.compute())
 
     def on_validation_epoch_end(self):
         mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
@@ -178,6 +175,8 @@ def load_data():
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
     )
 
     dataloader_val = DataLoader(
@@ -187,6 +186,8 @@ def load_data():
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
     )
 
     return dataloader_train, dataloader_val
@@ -229,14 +230,14 @@ if __name__ == "__main__":
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator="gpu" if config.device == "cuda" else "cpu",
-        log_every_n_steps=1,
+        # log_every_n_steps=1,
         devices=config.num_devices,
         enable_checkpointing=True,
         max_epochs=config.epochs,
         # gradient_clip_val=config.clip,
         # gradient_clip_algorithm="value",
         callbacks=[
-            # best_checkpoint_callback,
+            best_checkpoint_callback,
             checkpoint_callback,
             # lr_monitor,
             # model_summary,
@@ -244,9 +245,9 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    # trainer.fit(model, dataloader_train, dataloader_val)
+    trainer.fit(model, dataloader_train)
 
-    model = LitFullySupervisedClassifier.load_from_checkpoint(
-        "checkpoints/epoch=499-step=500.ckpt", device=config.device
-    )
-    trainer.validate(model, dataloader_val)
+    # model = LitFullySupervisedClassifier.load_from_checkpoint(
+    #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
+    # )
+    # trainer.validate(model, dataloader_val)

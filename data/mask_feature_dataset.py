@@ -10,7 +10,7 @@ from pycocotools.coco import COCO
 class MaskData(torch.utils.data.Dataset):
     """Load the pre-extracted masks and their features into a torch Dataset."""
 
-    def __init__(self, dir, ann_file, device, pad_num=500):
+    def __init__(self, dir, ann_file, device, pad_num=700):
         """Load the masks and their features from `dir`."""
         self.dir = dir
         self.files = filter_empty_imgs(os.listdir(dir))
@@ -68,8 +68,8 @@ class MaskData(torch.utils.data.Dataset):
     def get_mask_data(self, path):
         """The pre-extracted masks are saved as a single object in a tar.gz file."""
         with gzip.open(path, "rb") as fp:
-            content = fp.read()
-        mask_data = torch.load(io.BytesIO(content))
+            mask_data = torch.load(io.BytesIO(fp.read()), map_location=self.device)
+
         # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
         # keys: 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
         return mask_data
@@ -111,14 +111,30 @@ class MaskData(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_val2017.json", "cpu")
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=MaskData.collate_fn)
+    from tqdm import tqdm
 
-    for batch in dataloader:
-        print(len(batch["masks"]))
-        print(batch["mask_features"].shape)
-        print(batch["boxes"].shape)
-        print(batch["iou_scores"].shape)
-        print(batch["num_masks"])
-        print(batch["img_ids"])
-        print(batch["targets"])
+    dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_train2017.json", "cpu")
+
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=1, collate_fn=MaskData.collate_fn, num_workers=12, pin_memory=True, persistent_workers=True
+    )
+
+    # max_dim = 0
+    # for batch in tqdm(dataloader):
+    #     max_dim = max(max_dim, batch["mask_features"].shape[0])
+    # print(max_dim)
+
+    # for file in tqdm(dataset.files):
+    #     path = os.path.join(dataset.dir, file)
+    #     with gzip.open(path, "rb") as fp:
+    #         fp.read()
+    # mask_data = torch.load(io.BytesIO(fp.read()), map_location=dataset.device)
+
+    # for batch in dataloader:
+    #     print(len(batch["masks"]))
+    #     print(batch["mask_features"].shape)
+    #     print(batch["boxes"].shape)
+    #     print(batch["iou_scores"].shape)
+    #     print(batch["num_masks"])
+    #     print(batch["img_ids"])
+    #     print(batch["targets"])
