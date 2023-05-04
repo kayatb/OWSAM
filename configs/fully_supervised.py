@@ -4,14 +4,14 @@ num_layers = 3
 hidden_dim = 100
 
 epochs = 500
-lr = 1e-3
+lr = 5e-5
 weight_decay = None
 clip = None  # Gradient clipping
 
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
-masks_train = "mask_features"
-masks_val = "mask_features"
+masks_train = "mask_features/mask_features_25"
+masks_val = "mask_features/mask_features_25"
 num_classes = 80
 batch_size = 8
 num_workers = 12

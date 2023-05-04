@@ -36,7 +36,7 @@ def box_iou(boxes1, boxes2):
     union = area1[:, None] + area2 - inter
 
     iou = inter / union
-    return iou, union
+    return torch.nan_to_num(iou, nan=-1.0), union
 
 
 def generalized_box_iou(boxes1, boxes2):

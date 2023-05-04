@@ -157,7 +157,6 @@ def parse_args():
         # required=True,
         help="Directory to store (Tensorboard) logging.",
     )
-    parser.add_argument("-e", "--embed-dir", help="Directory where the pre-extracted image embeddings are saved.")
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
 
     args = parser.parse_args()
@@ -200,8 +199,6 @@ if __name__ == "__main__":
         config.checkpoint_dir = args.checkpoint_dir
     if args.log_dir:
         config.log_dir = args.log_dir
-    if args.embed_dir:
-        config.embed_dir = args.embed_dir
     if args.num_gpus:
         config.num_devices = args.num_gpus
 
@@ -245,7 +242,7 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    trainer.fit(model, dataloader_train)
+    trainer.fit(model, dataloader_train, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
