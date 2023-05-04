@@ -26,9 +26,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.criterion = self.set_criterion(device)
         self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
 
-        self.validation_step_gt = []
-        self.validation_step_pred = []
-
     def training_step(self, batch, batch_idx):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
