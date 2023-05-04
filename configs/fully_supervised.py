@@ -1,19 +1,19 @@
 """Config for the training of the fully-supervised classification model."""
 
 num_layers = 3
-hidden_dim = 100
+hidden_dim = 512
 
-epochs = 500
-lr = 5e-5
+epochs = 100
+lr = 1e-3
 weight_decay = None
 clip = None  # Gradient clipping
 
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
-ann_val = "../datasets/coco/annotations/instances_val2017.json"
-masks_train = "mask_features/mask_features_25"
-masks_val = "mask_features/mask_features_25"
+ann_val = "../datasets/coco/annotations/instances_train2017.json"
+masks_train = "mask_features/mask_features_25/train"
+masks_val = "mask_features/mask_features_25/val"
 num_classes = 80
-batch_size = 8
+batch_size = 1
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 
