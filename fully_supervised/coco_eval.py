@@ -24,10 +24,12 @@ from utils.misc import all_gather
 
 
 class CocoEvaluator(object):
-    def __init__(self, coco_gt, iou_types):
+    def __init__(self, coco_gt_ann, iou_types):
         assert isinstance(iou_types, (list, tuple))
+        coco_gt = COCO(coco_gt_ann)
         coco_gt = copy.deepcopy(coco_gt)
         self.coco_gt = coco_gt
+        self.iou_types = iou_types
 
         self.iou_types = iou_types
         self.coco_eval = {}
@@ -36,6 +38,10 @@ class CocoEvaluator(object):
 
         self.img_ids = []
         self.eval_imgs = {k: [] for k in iou_types}
+
+    def reset(self):
+        self.img_ids = []
+        self.eval_imgs = {k: [] for k in self.iou_types}
 
     def update(self, predictions):
         img_ids = list(np.unique(list(predictions.keys())))
@@ -86,8 +92,7 @@ class CocoEvaluator(object):
             if len(prediction) == 0:
                 continue
 
-            boxes = prediction["boxes"]
-            boxes = convert_to_xywh(boxes).tolist()
+            boxes = prediction["boxes"].tolist()
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
 
@@ -138,36 +143,51 @@ class CocoEvaluator(object):
             )
         return coco_results
 
-    def prepare_for_coco_keypoint(self, predictions):
-        coco_results = []
-        for original_id, prediction in predictions.items():
-            if len(prediction) == 0:
-                continue
+    @staticmethod
+    def to_coco_format(img_ids, outputs, label_map):
+        results = {}
 
-            boxes = prediction["boxes"]
-            boxes = convert_to_xywh(boxes).tolist()
-            scores = prediction["scores"].tolist()
-            labels = prediction["labels"].tolist()
-            keypoints = prediction["keypoints"]
-            keypoints = keypoints.flatten(start_dim=1).tolist()
+        for i in range(len(img_ids)):
+            labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
 
-            coco_results.extend(
-                [
-                    {
-                        "image_id": original_id,
-                        "category_id": labels[k],
-                        "keypoints": keypoint,
-                        "score": scores[k],
-                    }
-                    for k, keypoint in enumerate(keypoints)
-                ]
+            # Remove padded boxes and those that are predicted with no-object class.
+            concat = torch.cat(
+                (labels.unsqueeze(1), outputs["iou_scores"][i].unsqueeze(1), outputs["pred_boxes"][i]), dim=1
             )
-        return coco_results
+            concat = concat[concat[:, 0] != 80]
 
+            labels = concat[:, 0]
+            labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
 
-def convert_to_xywh(boxes):
-    xmin, ymin, xmax, ymax = boxes.unbind(1)
-    return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+            results[img_ids[i]] = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": labels}
+
+        return results
+
+    # def prepare_for_coco_keypoint(self, predictions):
+    #     coco_results = []
+    #     for original_id, prediction in predictions.items():
+    #         if len(prediction) == 0:
+    #             continue
+
+    #         boxes = prediction["boxes"]
+    #         boxes = convert_to_xywh(boxes).tolist()
+    #         scores = prediction["scores"].tolist()
+    #         labels = prediction["labels"].tolist()
+    #         keypoints = prediction["keypoints"]
+    #         keypoints = keypoints.flatten(start_dim=1).tolist()
+
+    #         coco_results.extend(
+    #             [
+    #                 {
+    #                     "image_id": original_id,
+    #                     "category_id": labels[k],
+    #                     "keypoints": keypoint,
+    #                     "score": scores[k],
+    #                 }
+    #                 for k, keypoint in enumerate(keypoints)
+    #             ]
+    #         )
+    #     return coco_results
 
 
 def merge(img_ids, eval_imgs):

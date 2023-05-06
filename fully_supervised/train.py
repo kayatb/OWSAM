@@ -1,6 +1,7 @@
 import configs.fully_supervised as config
 from data.mask_feature_dataset import MaskData
 from fully_supervised.model import FullySupervisedClassifier
+from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
@@ -14,13 +15,14 @@ from lightning.pytorch.callbacks import (
     # LearningRateMonitor,
     # ModelSummary,
 )
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
+
+# from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self, device, tune_config=None):
+    def __init__(self, device, label_map, tune_config=None):
         super().__init__()
 
         if tune_config:  # If a tuner config is given, override the default config values.
@@ -28,9 +30,12 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             config.hidden_dim = tune_config["hidden_dim"]
             config.lr = tune_config["lr"]
 
+        self.label_map = label_map  # Mapping from continuous ids back to original annotated ones.
+
         self.model = self.load_model(device)
         self.criterion = self.set_criterion(device)
-        self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
+        self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
+        # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
 
     def training_step(self, batch, batch_idx):
         outputs = self.model(batch)
@@ -57,6 +62,9 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         return loss
 
+    # def on_validation_epoch_start(self):
+    #     self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
+
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
@@ -80,15 +88,24 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             logger=True,
         )
 
-        pred_metric_input = self.get_map_format(outputs)
+        results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map)
+        self.evaluator.update(results)
 
-        self.map.update(preds=pred_metric_input, target=batch["targets"])
+        # pred_metric_input = self.get_map_format(outputs)
+        # self.map.update(preds=pred_metric_input, target=batch["targets"])
 
     def on_validation_epoch_end(self):
-        mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-        self.print(mAPs)
-        self.log_dict(mAPs, sync_dist=True)
-        self.map.reset()
+        self.evaluator.synchronize_between_processes()
+        self.evaluator.accumulate()
+        self.evaluator.summarize()
+        self.evaluator.reset()
+        # TODO: log the eval results
+        # print(self.evaluator.coco_eval["bbox"].eval.keys())
+
+        # mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
+        # self.print(mAPs)
+        # self.log_dict(mAPs, sync_dist=True)
+        # self.map.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
@@ -120,30 +137,30 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         return criterion
 
-    def get_map_format(self, outputs):
-        """Convert the data to the format that the metric will accept:
-        a list of dictionaries, where each dictionary corresponds to a single image.
-        Args:
-            outputs: dict containing model outputs with keys `masks`, `pred_logits`, `iou_scores`, and `pred_boxes`
+    # def get_map_format(self, outputs):
+    #     """Convert the data to the format that the metric will accept:
+    #     a list of dictionaries, where each dictionary corresponds to a single image.
+    #     Args:
+    #         outputs: dict containing model outputs with keys `masks`, `pred_logits`, `iou_scores`, and `pred_boxes`
 
-        Returns:
-            pred_conv: list of dicts, where each dict contains `boxes`, `scores` and `labels`
-        """
-        pred_conv = []
+    #     Returns:
+    #         pred_conv: list of dicts, where each dict contains `boxes`, `scores` and `labels`
+    #     """
+    #     pred_conv = []
 
-        for i in range(outputs["pred_logits"].shape[0]):  # Loop over the batches
-            labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
+    #     for i in range(outputs["pred_logits"].shape[0]):  # Loop over the batches
+    #         labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
 
-            # Remove padded boxes and those that are predicted with no-object class.
-            concat = torch.cat(
-                (labels.unsqueeze(1), outputs["iou_scores"][i].unsqueeze(1), outputs["pred_boxes"][i]), dim=1
-            )
-            concat = concat[concat[:, 0] != 80]
+    #         # Remove padded boxes and those that are predicted with no-object class.
+    #         concat = torch.cat(
+    #             (labels.unsqueeze(1), outputs["iou_scores"][i].unsqueeze(1), outputs["pred_boxes"][i]), dim=1
+    #         )
+    #         concat = concat[concat[:, 0] != 80]
 
-            pred_dict = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": concat[:, 0]}
-            pred_conv.append(pred_dict)
+    #         pred_dict = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": concat[:, 0]}
+    #         pred_conv.append(pred_dict)
 
-        return pred_conv
+    #     return pred_conv
 
 
 def parse_args():
@@ -194,7 +211,7 @@ def load_data(batch_size=None):
         prefetch_factor=3,
     )
 
-    return dataloader_train, dataloader_val
+    return dataloader_train, dataloader_val, dataset_val.continuous_to_cat_id
 
 
 if __name__ == "__main__":
@@ -209,9 +226,9 @@ if __name__ == "__main__":
 
     pl.seed_everything(config.seed, workers=True)
 
-    dataloader_train, dataloader_val = load_data()
+    dataloader_train, dataloader_val, label_map = load_data()
 
-    model = LitFullySupervisedClassifier(config.device)
+    model = LitFullySupervisedClassifier(config.device, label_map)
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
@@ -239,8 +256,8 @@ if __name__ == "__main__":
         # gradient_clip_val=config.clip,
         # gradient_clip_algorithm="value",
         callbacks=[
-            best_checkpoint_callback,
-            checkpoint_callback,
+            # best_checkpoint_callback,
+            # checkpoint_callback,
             # lr_monitor,
             # model_summary,
         ],

@@ -28,7 +28,7 @@ class MaskData(torch.utils.data.Dataset):
         self.continuous_to_cat_id = {}
         for i, id in enumerate(self.cat_id_to_name.keys()):
             self.cat_id_to_continuous[id] = i  # Start the classes at 0. The last index is reserved for no-object class.
-            self.continuous_to_cat_id[i + 1] = id
+            self.continuous_to_cat_id[i] = id
 
     def __getitem__(self, idx):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),
