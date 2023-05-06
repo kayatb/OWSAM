@@ -15,7 +15,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu113
 Install segment-anything:
 
 ```bash
-git clone git@github.com:facebookresearch/segment-anything.git
+git clone https://github.com/facebookresearch/segment-anything.git
 cd segment-anything
 pip install -e .
 ```
@@ -23,4 +23,9 @@ pip install -e .
 Install additional tools:
 ```bash
 pip install opencv-python pycocotools matplotlib tqdm lightning scipy tensorboard
+```
+
+For hyperparameter tuning:
+```bash
+pip install "ray[tune]"
 ```

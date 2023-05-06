@@ -17,7 +17,7 @@ class FullySupervisedClassifier(nn.Module):
         self.layers.append(nn.ReLU())
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
-            self.layers.append(nn.ReLU())
+            self.layers.append(nn.ELU())
 
         self.classifier = nn.Linear(hidden_dim, self.num_classes + 1)  # +1 for the no-object class
 

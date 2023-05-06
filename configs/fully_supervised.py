@@ -10,8 +10,8 @@ clip = None  # Gradient clipping
 
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_train2017.json"
-masks_train = "mask_features/mask_features_25/train"
-masks_val = "mask_features/mask_features_25/val"
+masks_train = "mask_features/mask_features_25"
+masks_val = "mask_features/mask_features_25"
 num_classes = 80
 batch_size = 1
 num_workers = 12

@@ -20,8 +20,14 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self, device):
+    def __init__(self, device, tune_config=None):
         super().__init__()
+
+        if tune_config:  # If a tuner config is given, override the default config values.
+            config.num_layers = tune_config["num_layers"]
+            config.hidden_dim = tune_config["hidden_dim"]
+            config.lr = tune_config["lr"]
+
         self.model = self.load_model(device)
         self.criterion = self.set_criterion(device)
         self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")  # TODO: can also calculate for segm masks.
@@ -160,13 +166,15 @@ def parse_args():
     return args
 
 
-def load_data():
+def load_data(batch_size=None):
     dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
     dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
 
+    bs = batch_size if batch_size else config.batch_size  # Override config if batch_size is given.
+
     dataloader_train = DataLoader(
         dataset_train,
-        batch_size=config.batch_size,
+        batch_size=bs,
         shuffle=True,
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
@@ -177,7 +185,7 @@ def load_data():
 
     dataloader_val = DataLoader(
         dataset_val,
-        batch_size=config.batch_size,
+        batch_size=bs,
         shuffle=False,
         collate_fn=MaskData.collate_fn,
         num_workers=config.num_workers,
