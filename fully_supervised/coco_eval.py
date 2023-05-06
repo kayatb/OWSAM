@@ -1,5 +1,5 @@
 """
-Copied and adapted from DETR: https://github.com/facebookresearch/detr/blob/main/datasets/coco_eval.py
+Copy-paste from DETR: https://github.com/facebookresearch/detr/blob/main/datasets/coco_eval.py
 """
 
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
@@ -20,7 +20,7 @@ from pycocotools.cocoeval import COCOeval
 from pycocotools.coco import COCO
 import pycocotools.mask as mask_util
 
-from util.misc import all_gather
+from utils.misc import all_gather
 
 
 class CocoEvaluator(object):
