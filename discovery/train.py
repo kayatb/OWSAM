@@ -1,5 +1,6 @@
 import configs.discovery as config
 from data.mask_feature_dataset import MaskData
+from discovery.discovery_network import DiscoveryClassifier
 
 import argparse
 import torch
@@ -20,50 +21,46 @@ class LitDiscovery(pl.LightningModule):
         # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")
 
     def training_step(self, batch, batch_idx):
-        # Get outputs from model
-        # Get loss
-        # Log the loss
-        # Return the loss
-        pass
+        loss = self.model(batch)
+        self.log_dict(loss, batch_size=len(batch["masks"]), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        # Get outputs from model
-        # Get loss
-        # Log the loss
-        # Calculate / update / log evaluation metric
-        pass
+        loss = self.model(batch)
+        self.log_dict(loss, batch_size=len(batch["masks"]), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        # TODO: Calculate / update / log evaluation metric
 
     def on_validation_epoch_end(self):
-        # Calculate and log evaluation metric over whole dataset
+        # TODO: Calculate and log evaluation metric over whole dataset
         pass
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
+        # TODO: RNCDL uses SGD here.
+        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)
 
         return optimizer
 
     def load_model(self, device):
-        # Load model
-        # Model to device
-        # Return model
-        pass
+        model = DiscoveryClassifier(
+            num_labeled=config.num_labeled,
+            num_unlabeled=config.num_unlabeled,
+            feat_dim=config.feat_dim,
+            hidden_dim=config.hidden_dim,
+            proj_dim=config.proj_dim,
+            num_views=config.num_views,
+            memory_batches=config.memory_batches,
+            items_per_batch=config.items_per_batch,
+            memory_patience=config.memory_patience,
+            num_iters_sk=config.num_iters_sk,
+            epsilon_sk=config.epsilon_sk,
+            temperature=config.temperature,
+            batch_size=config.batch_size,
+            num_hidden_layers=config.num_layers,
+        )
+        model.to(device)
 
-    # def set_criterion(self, device):
-    #     """Use the DETR loss (but only the classification part)."""
-    #     # Default DETR values
-    #     eos_coef = 0.05  # Was 0.1
-    #     weight_dict = {"loss_ce": 1, "loss_bbox": 5}
-    #     weight_dict["loss_giou"] = 2
-
-    #     losses = ["labels"]  # , "boxes", "cardinality"]
-
-    #     matcher = HungarianMatcher()
-    #     criterion = SetCriterion(
-    #         self.model.num_classes, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
-    #     )
-    #     criterion.to(device)
-
-    #     return criterion
+        return model
 
 
 def parse_args():
@@ -87,10 +84,34 @@ def parse_args():
 
 
 def load_data():
-    # Make datasets
-    # Make dataloaders
-    # Return dataloaders
-    pass
+    # For using multiple dataloaders, see --> https://lightning.ai/docs/pytorch/latest/data/iterables.html#multiple-dataloaders
+    # TODO: return labeled and unlabeled dataloader here.
+    dataset_train_labeled = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
+    dataset_val_labeled = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
+
+    dataloader_train_labeled = DataLoader(
+        dataset_train_labeled,
+        batch_size=config.batch_size,
+        shuffle=True,
+        collate_fn=MaskData.collate_fn,
+        num_workers=config.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
+    )
+
+    dataloader_val_labeled = DataLoader(
+        dataset_val_labeled,
+        batch_size=config.batch_size,
+        shuffle=False,
+        collate_fn=MaskData.collate_fn,
+        num_workers=config.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
+    )
+
+    return dataloader_train_labeled, dataloader_val_labeled
 
 
 if __name__ == "__main__":
@@ -130,8 +151,8 @@ if __name__ == "__main__":
         devices=config.num_devices,
         enable_checkpointing=True,
         max_epochs=config.epochs,
-        # gradient_clip_val=config.clip,
-        # gradient_clip_algorithm="value",
+        gradient_clip_val=config.clip,
+        gradient_clip_algorithm=config.clip_type,
         callbacks=[
             best_checkpoint_callback,
             checkpoint_callback,
