@@ -25,9 +25,15 @@ def parse_args():
     group.add_argument("-i", "--image-dir", help="Dir of the images.")
     parser.add_argument(
         "-s",
-        "--save-dir",
+        "--save-feat-dir",
         required=True,
         help="Directory to save extracted features",
+    )
+    parser.add_argument(
+        "-m",
+        "--save-mask-dir",
+        required=True,
+        help="Directory to save extracted masks",
     )
     parser.add_argument("-g", "--gpu", action="store_true", help="Whether to use the GPU or not.")
     parser.add_argument("-b", "--batch-size", type=int, default=1, help="Batch size")
@@ -36,63 +42,60 @@ def parse_args():
     return parser.parse_args()
 
 
-def save_all_masks(mask_generator, dataloader, save_dir, resume=False):
-    os.makedirs(save_dir, exist_ok=True)
+def save_all_masks(mask_generator, dataloader, save_feat_dir, save_mask_dir, resume=False, model=None):
+    # If a model is given, the image embeddings are calculated from scratch instead of using pre-extracted ones.
+    os.makedirs(save_feat_dir, exist_ok=True)
+    os.makedirs(save_mask_dir, exist_ok=True)
 
     for batch in tqdm(dataloader):
+        if model:
+            img_embeds = model.image_encoder(batch["img"].to(model.device))
+            batch_size = batch["img"].shape[0]
+
+        else:
+            img_embeds = batch["embed"]
+            batch_size = batch["embed"].shape[0]
+
         # batch contains {"embed": embeds, "original_size": original_sizes, "img_id": img_ids}
-        batch_size = batch["embed"].shape[0]
         for i in range(batch_size):
-            save_path = os.path.join(save_dir, f"{batch['img_id'][i]}.gz")
+            if model:
+                orig_size = (batch["orig_w"][i].item(), batch["orig_h"][i].item())
+                img_id = int(batch["fname"][i])
+            else:
+                orig_size = batch["original_size"][i]
+                img_id = batch["img_id"][i]
+
+            save_path_feat = os.path.join(save_feat_dir, f"{img_id}.pt")
+            save_path_mask = os.path.join(save_mask_dir, f"{img_id}.gz")
 
             # If resuming extraction, skip files that already exist.
-            if resume and os.path.isfile(save_path):
+            # TODO: the image embedding extraction is not skipped, which slows things down unnecessarily.
+            if resume and os.path.isfile(save_path_feat) and os.path.isfile(save_path_mask):
                 continue
 
             # output is a list of dicts (one for each mask generated for that image), with keys:
             # 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
-            output = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
-
-            for o in output:
-                del o["point_coords"]  # No need to save this.
-
-            # For each image, save a gzipped file with all the masks and the img_id as filename.
-            buffer = io.BytesIO()
-            torch.save(output, buffer)
-
-            with gzip.open(save_path, "wb") as fp:
-                buffer.seek(0)
-                fp.write(buffer.read())
-
-
-def save_all_masks_without_embeds(model, mask_generator, dataloader, save_dir, resume=False):
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"All mask features are saved in `{save_dir}`")
-
-    for batch in tqdm(dataloader):
-        img_embeds = model.image_encoder(batch["img"].to(model.device))
-        # batch contains {"img", "orig_h", "orig_w", "fname"}
-        batch_size = batch["img"].shape[0]
-        for i in range(batch_size):
-            img_id = int(batch["fname"][i])
-            save_path = os.path.join(save_dir, f"{img_id}.gz")
-
-            # If resuming extraction, skip files that already exist.
-            if resume and os.path.isfile(save_path):
-                print(f"Skipping file {img_id}")
-                continue
-
-            orig_size = (batch["orig_w"][i].item(), batch["orig_h"][i].item())
             output = mask_generator.generate(img_embeds[i].unsqueeze(0), orig_size)
-            # output is a list of dicts (one for each mask generated for that image), with keys:
-            # 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
+
+            # First, save the mask before deleting it.
+            masks = []
+            for m in output:
+                masks.append(m["segmentation"])
+
             # For each image, save a gzipped file with all the masks and the img_id as filename.
             buffer = io.BytesIO()
-            torch.save(output, buffer)
+            torch.save(masks, buffer)
 
-            with gzip.open(save_path, "wb") as fp:
+            with gzip.open(save_path_mask, "wb") as fp:
                 buffer.seek(0)
                 fp.write(buffer.read())
+
+            # Now delete the masks and point coords we no longer need.
+            for mask in output:
+                del mask["point_coords"]
+                del mask["segmentation"]
+
+            torch.save(output, save_path_feat)
 
 
 if __name__ == "__main__":
@@ -108,9 +111,11 @@ if __name__ == "__main__":
         print("Start extraction of SAM masks from pre-calculated image embeddings...")
         dataset = ImageEmbeds(args.embed_dir, device)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=ImageEmbeds.collate_fn)
-        save_all_masks(mask_generator, dataloader, args.save_dir, resume=args.resume)
+        model = None
     else:
         print("Start extraction of SAM masks without pre-calculated image embeddings...")
         dataset = ImageDataset(args.image_dir)
         dataloader = DataLoader(dataset, batch_size=args.batch_size)
-        save_all_masks_without_embeds(sam, mask_generator, dataloader, args.save_dir, resume=args.resume)
+        model = sam
+
+    save_all_masks(mask_generator, dataloader, args.save_feat_dir, args.save_mask_dir, resume=args.resume, model=model)
