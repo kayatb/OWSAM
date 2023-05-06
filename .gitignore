@@ -2,10 +2,13 @@ segment-anything
 checkpoints/
 img_embeds/
 mask_features/
+masks/
+mask_and_features/
 tensorboard_logs/
 *.jpg
 *.zip
 .vscode
+*.job
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

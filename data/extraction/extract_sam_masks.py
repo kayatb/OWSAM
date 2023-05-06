@@ -49,9 +49,13 @@ def save_all_masks(mask_generator, dataloader, save_dir, resume=False):
             if resume and os.path.isfile(save_path):
                 continue
 
-            output = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
             # output is a list of dicts (one for each mask generated for that image), with keys:
             # 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
+            output = mask_generator.generate(batch["embed"][i].unsqueeze(0), batch["original_size"][i])
+
+            for o in output:
+                del o["point_coords"]  # No need to save this.
+
             # For each image, save a gzipped file with all the masks and the img_id as filename.
             buffer = io.BytesIO()
             torch.save(output, buffer)
