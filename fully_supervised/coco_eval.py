@@ -72,9 +72,28 @@ class CocoEvaluator(object):
             coco_eval.accumulate()
 
     def summarize(self):
+        results = {}
         for iou_type, coco_eval in self.coco_eval.items():
             print("IoU metric: {}".format(iou_type))
             coco_eval.summarize()
+            # Obtain the summarized evaluation results in a nice dict format for logging purposes.
+            result_keys = [
+                "map",
+                "map50",
+                "map75",
+                "map_small",
+                "map_medium",
+                "map_large",
+                "mar1",
+                "mar10",
+                "mar100",
+                "mar_small",
+                "mar_medium",
+                "mar_large",
+            ]
+            results[iou_type] = {k: v for k, v in zip(result_keys, self.coco_eval[iou_type].stats)}
+
+        return results
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":

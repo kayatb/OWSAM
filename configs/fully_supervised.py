@@ -8,10 +8,10 @@ lr = 1e-3
 weight_decay = None
 clip = None  # Gradient clipping
 
-ann_train = "../datasets/coco/annotations/instances_val2017.json"
+ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
-masks_train = "mask_and_features/mask_feature_single"
-masks_val = "mask_and_features/mask_feature_single"
+masks_train = "mask_features/train_all"
+masks_val = "mask_features/val_all"
 num_classes = 80
 batch_size = 1
 num_workers = 12

@@ -44,7 +44,6 @@ class FullySupervisedClassifier(nn.Module):
             padded_class_logits[i] = torch.cat((class_logits[i], padding))
 
         return {
-            "masks": batch["masks"],
             "pred_logits": padded_class_logits,
             "pred_boxes": batch["boxes"],
             "iou_scores": batch["iou_scores"],  # Used for mAP calculation
