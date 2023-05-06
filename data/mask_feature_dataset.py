@@ -2,8 +2,6 @@ from utils.misc import filter_empty_imgs
 
 import torch
 import os
-import gzip
-import io
 from pycocotools.coco import COCO
 
 
@@ -34,7 +32,10 @@ class MaskData(torch.utils.data.Dataset):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),
         and the targets (class labels and segmentation masks) from the COCO dataset."""
         file_path = os.path.join(self.dir, self.files[idx])
-        mask_data = self.get_mask_data(file_path)
+        # mask_data = self.get_mask_data(file_path)
+        # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
+        # keys: 'area', 'bbox', 'predicted_iou', 'stability_score', 'mask_feature'
+        mask_data = torch.load(file_path, map_location=self.device)
 
         img_id = int(os.path.splitext(self.files[idx])[0])
         targets = self.get_coco_targets(img_id)
@@ -43,7 +44,6 @@ class MaskData(torch.utils.data.Dataset):
         # The number of masks outputted by SAM is not constant, so pad with
         # empty values.
         boxes = torch.zeros((self.pad_num, 4))
-        # mask_features = torch.zeros((self.pad_num, 256))
         mask_features = torch.zeros((len(mask_data), 256))
         iou_scores = -torch.ones((self.pad_num))
 
@@ -53,7 +53,7 @@ class MaskData(torch.utils.data.Dataset):
             iou_scores[i] = mask["predicted_iou"]
 
         return {
-            "masks": [mask["segmentation"] for mask in mask_data],
+            # "masks": [mask["segmentation"] for mask in mask_data],
             "boxes": boxes,
             "mask_features": mask_features,
             "iou_scores": iou_scores,
@@ -65,14 +65,14 @@ class MaskData(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.files)
 
-    def get_mask_data(self, path):
-        """The pre-extracted masks are saved as a single object in a tar.gz file."""
-        with gzip.open(path, "rb") as fp:
-            mask_data = torch.load(io.BytesIO(fp.read()), map_location=self.device)
+    # def get_mask_data(self, path):
+    #     """The pre-extracted masks are saved as a single object in a tar.gz file."""
+    #     with gzip.open(path, "rb") as fp:
+    #         mask_data = torch.load(io.BytesIO(fp.read()), map_location=self.device)
 
-        # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
-        # keys: 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
-        return mask_data
+    #     # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
+    #     # keys: 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
+    #     return mask_data
 
     def get_coco_targets(self, img_id):
         """Get the COCO annotations belonging to the image embedding.
@@ -91,7 +91,7 @@ class MaskData(torch.utils.data.Dataset):
 
     @staticmethod
     def collate_fn(data):
-        masks = [d["masks"] for d in data]
+        # masks = [d["masks"] for d in data]
         boxes = torch.stack([d["boxes"] for d in data])
         mask_features = torch.cat([d["mask_features"] for d in data])
         iou_scores = torch.stack([d["iou_scores"] for d in data])
@@ -100,7 +100,7 @@ class MaskData(torch.utils.data.Dataset):
         targets = [d["targets"] for d in data]
 
         return {
-            "masks": masks,
+            # "masks": masks,
             "boxes": boxes,
             "mask_features": mask_features,
             "iou_scores": iou_scores,
@@ -113,16 +113,18 @@ class MaskData(torch.utils.data.Dataset):
 if __name__ == "__main__":
     from tqdm import tqdm
 
-    dataset = MaskData("mask_features", "../datasets/coco/annotations/instances_train2017.json", "cpu")
+    dataset = MaskData("mask_features/val_all", "../datasets/coco/annotations/instances_val2017.json", "cpu")
 
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=1, collate_fn=MaskData.collate_fn, num_workers=12, pin_memory=True, persistent_workers=True
     )
 
-    # max_dim = 0
-    # for batch in tqdm(dataloader):
-    #     max_dim = max(max_dim, batch["mask_features"].shape[0])
-    # print(max_dim)
+    # Calculate the maximum amount of masks detected by SAM.
+    # 666 for train set, 395 for val set.
+    max_dim = 0
+    for batch in tqdm(dataloader):
+        max_dim = max(max_dim, batch["mask_features"].shape[0])
+    print(max_dim)
 
     # for file in tqdm(dataset.files):
     #     path = os.path.join(dataset.dir, file)
