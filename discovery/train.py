@@ -21,15 +21,52 @@ class LitDiscovery(pl.LightningModule):
         # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")
 
     def training_step(self, batch, batch_idx):
-        loss = self.model(batch)
-        self.log_dict(loss, batch_size=len(batch["masks"]), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        loss, supervised_loss, discovery_loss = self.model(batch)
+        supervised_loss = {"train_" + k: v for k, v in supervised_loss.items()}
+        discovery_loss = {"train_" + k: v for k, v in discovery_loss.items()}
+
+        self.log_dict(
+            supervised_loss, batch_size=len(batch["boxes"]), on_step=True, on_epoch=True, prog_bar=True, logger=True
+        )
+        self.log_dict(
+            discovery_loss, batch_size=len(batch["boxes"]), on_step=True, on_epoch=True, prog_bar=True, logger=True
+        )
+
+        self.log(
+            "train_total_loss",
+            loss,
+            batch_size=len(batch["boxes"]),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self.model(batch)
-        self.log_dict(loss, batch_size=len(batch["masks"]), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         # TODO: Calculate / update / log evaluation metric
+        loss, supervised_loss, discovery_loss = self.model(batch)
+
+        supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
+        discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
+
+        self.log_dict(
+            supervised_loss, batch_size=len(batch["boxes"]), on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
+        self.log_dict(
+            discovery_loss, batch_size=len(batch["boxes"]), on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
+
+        self.log(
+            "val_total_loss",
+            loss,
+            batch_size=len(batch["boxes"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
     def on_validation_epoch_end(self):
         # TODO: Calculate and log evaluation metric over whole dataset

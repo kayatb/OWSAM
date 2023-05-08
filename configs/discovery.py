@@ -14,8 +14,12 @@ ann_val = "../datasets/coco/annotations/instances_val2017.json"
 masks_train = "mask_features/mask_features_25"
 masks_val = "mask_features/mask_features_25"
 
+# Supervised classifier settings
+supervis_num_layers = 10
+supervis_hidden_dim = 512
+
 # RNCDL settings
-num_labeled = 80 + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
+num_labeled = 80  # + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
 num_unlabeled = 2100
 feat_dim = 256
 hidden_dim = 512
