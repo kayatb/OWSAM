@@ -88,6 +88,7 @@ class MultiHead(nn.Module):
 class DiscoveryClassifier(nn.Module):
     def __init__(
         self,
+        head_lab,
         num_labeled,
         num_unlabeled,
         feat_dim,
@@ -108,7 +109,7 @@ class DiscoveryClassifier(nn.Module):
     ):
         super().__init__()
 
-        self.head_lab = nn.Linear(feat_dim, num_labeled)
+        self.head_lab = head_lab
 
         self.head_unlab = MultiHead(
             input_dim=feat_dim,
@@ -211,8 +212,8 @@ class DiscoveryClassifier(nn.Module):
         return logits_full
 
     def forward_heads(self, feats):
-        logits_lab = self.head_lab(feats)
-        logits_unlab, _ = self.head_unlab(feats)
+        logits_lab = self.head_lab(feats)["pred_logits"]
+        logits_unlab, _ = self.head_unlab(feats["mask_features"])
         logits_unlab /= self.temperature
 
         out = {

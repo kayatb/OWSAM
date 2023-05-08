@@ -16,6 +16,7 @@ class DiscoveryModel(nn.Module):
         self.supervised_loss_lambda = config.supervised_loss_lambda
 
         self.discovery_classifier = DiscoveryClassifier(
+            self.supervised_classifier,
             num_labeled=config.num_labeled,
             num_unlabeled=config.num_unlabeled,
             feat_dim=config.feat_dim,
@@ -42,7 +43,7 @@ class DiscoveryModel(nn.Module):
         if not self.is_discovery_memory_filled():
             supervised_loss["supervised_loss"] *= 0
 
-        # TODO: change discovery network forward pass to accomodate batch.
+        # TODO: change discovery network forward pass to accommodate batch.
         discovery_loss = self.discovery_classifier(unsupervised_batch)
         discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
 
@@ -76,6 +77,7 @@ class DiscoveryModel(nn.Module):
         return self.discovery_classifier.memory_patience == 0
 
     def load_supervised_criterion(self):
+        # TODO: implement this
         raise NotImplementedError
 
 

@@ -14,7 +14,7 @@ class FullySupervisedClassifier(nn.Module):
 
         self.layers = nn.Sequential()
         self.layers.append(nn.Linear(input_dim, hidden_dim))
-        self.layers.append(nn.ReLU())
+        self.layers.append(nn.ELU())
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.layers.append(nn.ELU())
