@@ -22,7 +22,7 @@ def box_xyxy_to_xywh(x):
     return torch.stack(b, dim=-1)
 
 
-dataset = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
+dataset = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
 dataloader = DataLoader(
     dataset,
     batch_size=1,  # Has to be 1 to avoid padding.
@@ -34,15 +34,15 @@ dataloader = DataLoader(
     prefetch_factor=3,
 )
 
-evaluator = CocoEvaluator(config.ann_val, ["bbox"])
+evaluator = CocoEvaluator(config.ann_train, ["bbox"])
 
 for batch in tqdm(dataloader):
     assert (
         batch["boxes"].shape[0] == 1
     ), f"Batch size has to be 1 to avoid padding. Current batch size is {batch['boxes'].shape[0]}."
 
-    pred_boxes = box_xywh_to_xyxy(batch["boxes"][0, : batch["num_masks"][0]])  # Remove padded boxes
-    pred_scores = batch["iou_scores"][0, : batch["num_masks"][0]]
+    pred_boxes = box_xywh_to_xyxy(batch["boxes"][0])  # Remove padded boxes
+    pred_scores = batch["iou_scores"][0]
 
     # Sort the boxes according to their scores (necessary for handling duplicate IoU matches).
     # FIXME: might not be necessary, boxes and their respective score seem to be already sorted...
@@ -69,11 +69,8 @@ for batch in tqdm(dataloader):
 
     assert len(best_idx) == len(torch.unique(torch.as_tensor(best_idx))), "Duplicate best boxes!"
 
-    # # All unassigned boxes are filtered out.
-    # best_boxes = torch.empty(gt_boxes.shape)
-    # for i, idx in enumerate(best_idx):
-    #     best_boxes[i] = sorted_pred_boxes[idx]  # Best labels is now equal to gt_labels
-    best_boxes = sorted_pred_boxes[best_idx]
+    # All unassigned boxes are filtered out.
+    best_boxes = sorted_pred_boxes[best_idx]  # Best labels is now equal to gt_labels
 
     # To COCO evaluator format.
     results = {}
@@ -84,7 +81,6 @@ for batch in tqdm(dataloader):
     }
 
     evaluator.update(results)
-    # break
 
 evaluator.synchronize_between_processes()
 evaluator.accumulate()
