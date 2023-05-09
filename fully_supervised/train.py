@@ -33,6 +33,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.model = self.load_model(device)
         self.criterion = self.set_criterion(device)
         self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
+        # self.evaluator.coco_eval["bbox"].params.useCats = 0  # For calculating object vs no-object mAP
 
     def training_step(self, batch, batch_idx):
         outputs = self.model(batch)
@@ -196,7 +197,7 @@ if __name__ == "__main__":
     best_checkpoint_callback = ModelCheckpoint(
         dirpath=config.checkpoint_dir,
         save_top_k=1,
-        monitor="val_map",
+        monitor="map",
         mode="max",
         filename="best_model_{epoch}",
     )
@@ -224,9 +225,9 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    trainer.fit(model, dataloader_train, dataloader_val)
+    # trainer.fit(model, dataloader_train, dataloader_val)
 
-    # model = LitFullySupervisedClassifier.load_from_checkpoint(
-    #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
-    # )
-    # trainer.validate(model, dataloader_val)
+    model = LitFullySupervisedClassifier.load_from_checkpoint(
+        "checkpoints/10_512_1e-4/best_model_epoch=23.ckpt", device=config.device, label_map=label_map
+    )
+    trainer.validate(model, dataloader_val)
