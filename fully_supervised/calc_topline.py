@@ -1,3 +1,10 @@
+"""
+Calculate the maximum mAP we can achieve with the extracted SAM masks.
+Match the masks predicted by SAM with the COCO ground truth masks based on IoU and
+then assign the matched mask the ground truth labels, i.e. we assume a perfect
+classifier. Now calculate the mAP with these predictions.
+"""
+
 import configs.fully_supervised as config
 from data.mask_feature_dataset import MaskData
 from utils.box_ops import box_iou
