@@ -4,6 +4,7 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 from PIL import Image
 
 
@@ -11,13 +12,20 @@ class ImageDataset(torch.utils.data.Dataset):
     """Simple dataset that loads images in a directory and preprocesses them to be fed into SAM.
     This dataset is used extract batched image embeddings from the SAM image encoder."""
 
-    def __init__(self, dir):
+    def __init__(self, dir, preprocess):
         self.dir = dir
         self.files = [file for file in os.listdir(dir)]
 
+        if preprocess == "sam":
+            self.preprocess = self.preprocess_sam
+        elif preprocess == "dino":
+            self.preprocess = self.preprocess_dino
+        else:
+            raise ValueError(f"Unknown preprocess name `{preprocess}` given. Available: `sam` and `dino`.")
+
     def __getitem__(self, idx):
         img = Image.open(os.path.join(self.dir, self.files[idx])).convert("RGB")
-        input_img = self.preprocess(np.array(img))
+        input_img = self.preprocess(img)
         return {
             "img": input_img,
             "orig_h": img.size[0],
@@ -29,8 +37,10 @@ class ImageDataset(torch.utils.data.Dataset):
         return len(self.files)
 
     # Taken from SAM example notebooks.
-    def preprocess(self, img):
+    def preprocess_sam(self, img):
         """Pre-process the image in order to be used as input for SAM."""
+        img = np.array(img)
+
         image_size = 1024
         transform = ResizeLongestSide(image_size)
 
@@ -51,6 +61,20 @@ class ImageDataset(torch.utils.data.Dataset):
         x = x.squeeze().numpy()
 
         return x
+
+    def preprocess_dino(self, img):
+        transform = T.Compose(
+            [
+                T.Resize(224),
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
+
+        img = transform(img)[:3].unsqueeze(0)
+
+        return img
 
 
 if __name__ == "__main__":

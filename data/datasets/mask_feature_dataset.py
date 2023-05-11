@@ -48,6 +48,8 @@ class MaskData(torch.utils.data.Dataset):
         iou_scores = -torch.ones((self.pad_num))
 
         for i, mask in enumerate(mask_data):
+            if mask["bbox"][2] == 0 or mask["bbox"][3] == 0:  # Skip boxes with zero width or height.
+                continue
             boxes[i] = torch.as_tensor(mask["bbox"])
             mask_features[i] = torch.as_tensor(mask["mask_feature"])
             iou_scores[i] = mask["predicted_iou"]
@@ -113,7 +115,7 @@ class MaskData(torch.utils.data.Dataset):
 if __name__ == "__main__":
     from tqdm import tqdm
 
-    dataset = MaskData("mask_features/val_all", "../datasets/coco/annotations/instances_val2017.json", "cpu")
+    dataset = MaskData("mask_features/train_all", "../datasets/coco/annotations/instances_train2017.json", "cpu")
 
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=1, collate_fn=MaskData.collate_fn, num_workers=12, pin_memory=True, persistent_workers=True

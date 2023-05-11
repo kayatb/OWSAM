@@ -4,6 +4,7 @@ import os
 import pickle
 import torch
 import torch.distributed as dist
+import numpy as np
 
 
 def filter_empty_imgs(files):
@@ -18,7 +19,37 @@ def filter_empty_imgs(files):
     return filtered_files
 
 
-# Copy-paste from DETR: https://github.com/facebookresearch/detr/blob/main/util/misc.py
+def crop_bboxes_from_img(img, boxes):
+    """Crop the bounding boxes from the image.
+    img is a PIL Image. Boxes are expected in (x, y, w, h) format."""
+    crops = []
+
+    for box in boxes:
+        # https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.crop
+        crop = img.crop(np.array(box))
+        crops.append(crop)
+
+    return crops
+
+
+def box_xywh_to_xyxy(x):
+    x, y, w, h = x.unbind(-1)
+    b = [x, y, (x + w), (y + h)]
+
+    return torch.stack(b, dim=-1)
+
+
+def box_xyxy_to_xywh(x):
+    xmin, ymin, xmax, ymax = x.unbind(-1)
+    b = [xmin, ymin, xmax - xmin, ymax - ymin]
+
+    return torch.stack(b, dim=-1)
+
+
+# ===== Copy-paste from DETR =====
+# https://github.com/facebookresearch/detr/blob/main/util/misc.py
+
+
 def all_gather(data):
     """
     Run all_gather on arbitrary picklable data (not necessarily tensors)
