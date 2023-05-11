@@ -12,7 +12,7 @@ def parse_args():
         prog="SAMFeatureExtractor",
         description="Extract mask features from SAM for given COCO dataset",
     )
-    parser.add_argument("-e", "--box-dir", required=True, help="Dir of the pre-extracted image embeddings")
+    parser.add_argument("-b", "--box-dir", required=True, help="Dir of the pre-extracted image embeddings")
     parser.add_argument("-i", "--image-dir", required=True, help="Dir of the images.")
     parser.add_argument(
         "-s",
@@ -30,11 +30,14 @@ def parse_args():
 def save_dino_features(model, dataloader, save_dir):
     print("Starting DINO feature extraction")
     print(f"All features are saved in {save_dir}")
-    for batch in tqdm(dataloader):
-        features = model(batch["crops"])
-        print(features.shape)
+    os.makedirs(save_dir, exist_ok=True)
 
-        # torch.save(features, os.path.join(save_dir, f"{batch['img_id']}.pt"))
+    for batch in tqdm(dataloader):
+        # print(batch["crops"].squeeze().shape)
+        features = model(batch["crops"].squeeze())
+        # print(features)
+
+        torch.save(features.half(), os.path.join(save_dir, f"{batch['img_id'].item()}.pt"))
         break
 
 
@@ -45,4 +48,10 @@ if __name__ == "__main__":
     # Batch size per image must be 1, since number of boxes differ between images and we don't want padding here.
     dataloader = DataLoader(dataset, batch_size=1)
 
-    dino_state_dict = torch.load("checkpoints/dinov2_vits14_pretrain.pth")  # TODO: download bigger DINO model
+    # dino_state_dict = torch.load("checkpoints/dinov2_vits14_pretrain.pth")  # TODO: download bigger DINO model
+    # dinov2_vits14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+    dinov2_vitb14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+    # dinov2_vitl14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
+    # dinov2_vitg14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitg14")
+
+    save_dino_features(dinov2_vitb14, dataloader, args.save_dir)

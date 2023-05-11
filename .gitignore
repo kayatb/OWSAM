@@ -4,6 +4,7 @@ img_embeds/
 mask_features/
 masks/
 mask_and_features/
+dino_features/
 tensorboard_logs/
 *.jpg
 *.zip

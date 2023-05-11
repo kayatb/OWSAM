@@ -28,7 +28,7 @@ class BBoxCropDataset(torch.utils.data.Dataset):
         for i, crop in enumerate(crops):
             crops[i] = self.preprocess(crop)
 
-        return {"crops": crops, "img_id": img_id}
+        return {"crops": torch.stack(crops), "img_id": img_id}
 
     def __len__(self):
         return len(self.files)
@@ -43,7 +43,7 @@ class BBoxCropDataset(torch.utils.data.Dataset):
             ]
         )
 
-        img = transform(img)[:3].unsqueeze(0)
+        img = transform(img)[:3]  # .unsqueeze(0)
 
         return img
 
