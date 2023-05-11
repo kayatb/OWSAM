@@ -1,0 +1,48 @@
+from data.datasets.bbox_crop_dataset import BBoxCropDataset
+
+import os
+import argparse
+from tqdm import tqdm
+import torch
+from torch.utils.data import DataLoader
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        prog="SAMFeatureExtractor",
+        description="Extract mask features from SAM for given COCO dataset",
+    )
+    parser.add_argument("-e", "--box-dir", required=True, help="Dir of the pre-extracted image embeddings")
+    parser.add_argument("-i", "--image-dir", required=True, help="Dir of the images.")
+    parser.add_argument(
+        "-s",
+        "--save-dir",
+        required=True,
+        help="Directory to save extracted features",
+    )
+
+    parser.add_argument("-g", "--gpu", action="store_true", help="Whether to use the GPU or not.")
+    parser.add_argument("--resume", action="store_true", help="Whether to resume extraction where it left off.")
+
+    return parser.parse_args()
+
+
+def save_dino_features(model, dataloader, save_dir):
+    print("Starting DINO feature extraction")
+    print(f"All features are saved in {save_dir}")
+    for batch in tqdm(dataloader):
+        features = model(batch["crops"])
+        print(features.shape)
+
+        # torch.save(features, os.path.join(save_dir, f"{batch['img_id']}.pt"))
+        break
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    dataset = BBoxCropDataset(args.image_dir, args.box_dir)
+    # Batch size per image must be 1, since number of boxes differ between images and we don't want padding here.
+    dataloader = DataLoader(dataset, batch_size=1)
+
+    dino_state_dict = torch.load("checkpoints/dinov2_vits14_pretrain.pth")  # TODO: download bigger DINO model

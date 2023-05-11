@@ -1,9 +1,7 @@
 from utils.misc import crop_bboxes_from_img, box_xywh_to_xyxy
 
 import os
-import numpy as np
 import torch
-import torch.nn.functional as F
 import torchvision.transforms as T
 from PIL import Image
 
@@ -30,7 +28,7 @@ class BBoxCropDataset(torch.utils.data.Dataset):
         for i, crop in enumerate(crops):
             crops[i] = self.preprocess(crop)
 
-        return crops
+        return {"crops": crops, "img_id": img_id}
 
     def __len__(self):
         return len(self.files)
@@ -59,4 +57,5 @@ if __name__ == "__main__":
     # print(len(dataset[442]))
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
     for batch in tqdm(dataloader):
-        continue
+        print(batch.keys())
+        break
