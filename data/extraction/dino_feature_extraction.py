@@ -27,14 +27,15 @@ def parse_args():
     return parser.parse_args()
 
 
-def save_dino_features(model, dataloader, save_dir):
+def save_dino_features(model, dataloader, save_dir, device):
     print("Starting DINO feature extraction")
     print(f"All features are saved in {save_dir}")
     os.makedirs(save_dir, exist_ok=True)
 
     for batch in tqdm(dataloader):
         # print(batch["crops"].squeeze().shape)
-        features = model(batch["crops"].squeeze())
+        with torch.no_grad():
+            features = model(batch["crops"].squeeze().to(device))
         # print(features)
 
         torch.save(features.half(), os.path.join(save_dir, f"{batch['img_id'].item()}.pt"))
@@ -44,14 +45,16 @@ def save_dino_features(model, dataloader, save_dir):
 if __name__ == "__main__":
     args = parse_args()
 
+    device = "cuda" if args.gpu else "cpu"
+
     dataset = BBoxCropDataset(args.image_dir, args.box_dir)
     # Batch size per image must be 1, since number of boxes differ between images and we don't want padding here.
     dataloader = DataLoader(dataset, batch_size=1)
 
     # dino_state_dict = torch.load("checkpoints/dinov2_vits14_pretrain.pth")  # TODO: download bigger DINO model
-    # dinov2_vits14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
-    dinov2_vitb14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-    # dinov2_vitl14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-    # dinov2_vitg14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitg14")
+    # dinov2_vits14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14").to(device)
+    dinov2_vitb14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14").to(device)
+    # dinov2_vitl14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14").to(device)
+    # dinov2_vitg14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vitg14").to(device)
 
-    save_dino_features(dinov2_vitb14, dataloader, args.save_dir)
+    save_dino_features(dinov2_vitb14, dataloader, args.save_dir, device)
