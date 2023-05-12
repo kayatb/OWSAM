@@ -154,7 +154,7 @@ class CropMaskData(MaskData):
     @staticmethod
     def collate_fn(data):
         batch = MaskData.collate_fn(data)
-        batch["crops"] = [d["crops"] for d in data]
+        batch["crops"] = torch.cat([d["crops"] for d in data])
 
         return batch
 

@@ -1,6 +1,6 @@
 import configs.fully_supervised as config
-from data.mask_feature_dataset import MaskData
-from fully_supervised.model import FullySupervisedClassifier
+from data.datasets.mask_feature_dataset import MaskData
+from fully_supervised.model import LinearClassifier
 from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
@@ -101,9 +101,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        model = FullySupervisedClassifier(
-            config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num
-        )
+        model = LinearClassifier(config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num)
         model.to(device)
 
         return model
