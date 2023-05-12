@@ -33,8 +33,12 @@ def save_dino_features(model, dataloader, save_dir, device):
     os.makedirs(save_dir, exist_ok=True)
 
     for batch in tqdm(dataloader):
+        crops = batch["crops"].squeeze().to(device)
+        if crops.dim() < 4:  # In case only a single bbox in this image, add a batch dim.
+            crops = crops.unsqueeze(0)
+
         with torch.no_grad():
-            features = model(batch["crops"].squeeze().to(device))
+            features = model(crops)
 
         torch.save(features.half(), os.path.join(save_dir, f"{batch['img_id'].item()}.pt"))
         break
