@@ -48,18 +48,20 @@ class MaskData(torch.utils.data.Dataset):
         mask_features = torch.zeros((len(mask_data), 256))
         iou_scores = -torch.ones((self.pad_num))
 
+        num_masks = 0
         for i, mask in enumerate(mask_data):
             if mask["bbox"][2] == 0 or mask["bbox"][3] == 0:  # Skip boxes with zero width or height.
                 continue
-            boxes[i] = torch.as_tensor(mask["bbox"])
-            mask_features[i] = torch.as_tensor(mask["mask_feature"])
-            iou_scores[i] = mask["predicted_iou"]
+            boxes[num_masks] = torch.as_tensor(mask["bbox"])
+            mask_features[num_masks] = torch.as_tensor(mask["mask_feature"])
+            iou_scores[num_masks] = mask["predicted_iou"]
+            num_masks += 1
 
         return {
             "boxes": boxes,
             "mask_features": mask_features,
             "iou_scores": iou_scores,
-            "num_masks": i + 1,  # The number of actual masks (i.e. without padding)
+            "num_masks": num_masks,  # The number of actual masks (i.e. without padding)
             "img_id": img_id,
             "targets": targets,
         }

@@ -1,6 +1,6 @@
 import configs.fully_supervised as config
-from data.datasets.mask_feature_dataset import MaskData
-from fully_supervised.model import LinearClassifier
+from data.datasets.mask_feature_dataset import MaskData, CropMaskData
+from fully_supervised.model import LinearClassifier, ResNetClassifier
 from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
@@ -10,23 +10,14 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import (
-    ModelCheckpoint,
-    # LearningRateMonitor,
-    # ModelSummary,
-)
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self, device, label_map, tune_config=None):
+    def __init__(self, device, label_map):
         super().__init__()
-
-        if tune_config:  # If a tuner config is given, override the default config values.
-            config.num_layers = tune_config["num_layers"]
-            config.hidden_dim = tune_config["hidden_dim"]
-            config.lr = tune_config["lr"]
 
         self.label_map = label_map  # Mapping from continuous ids back to original annotated ones.
 
@@ -101,7 +92,12 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        model = LinearClassifier(config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num)
+        if config.model_type == "linear":
+            model = LinearClassifier(config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num)
+        elif config.model_type == "resnet":
+            model = ResNetClassifier(config.num_classes, config.pad_num)
+        else:
+            raise ValueError(f"Unknown model type `{type}` given. Available: `linear` and `resnet`.")
         model.to(device)
 
         return model
@@ -129,13 +125,11 @@ def parse_args():
     parser.add_argument(
         "-c",
         "--checkpoint-dir",
-        # required=True,
         help="Directory to store model checkpoints/",
     )
     parser.add_argument(
         "-l",
         "--log-dir",
-        # required=True,
         help="Directory to store (Tensorboard) logging.",
     )
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
@@ -144,17 +138,26 @@ def parse_args():
     return args
 
 
-def load_data(batch_size=None):
-    dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
-    dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
+def load_data():
+    if config.model_type == "linear":
+        dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
+        dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
+        collate_fn = MaskData.collate_fn
 
-    bs = batch_size if batch_size else config.batch_size  # Override config if batch_size is given.
+    elif config.model_type == "resnet":
+        dataset_train = CropMaskData(
+            config.masks_train, config.ann_train, config.img_train, config.device, pad_num=config.pad_num
+        )
+        dataset_val = CropMaskData(
+            config.masks_val, config.ann_val, config.img_val, config.device, pad_num=config.pad_num
+        )
+        collate_fn = CropMaskData.collate_fn
 
     dataloader_train = DataLoader(
         dataset_train,
-        batch_size=bs,
+        batch_size=config.batch_size,
         shuffle=True,
-        collate_fn=MaskData.collate_fn,
+        collate_fn=collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
@@ -163,9 +166,9 @@ def load_data(batch_size=None):
 
     dataloader_val = DataLoader(
         dataset_val,
-        batch_size=bs,
+        batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=MaskData.collate_fn,
+        collate_fn=collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
@@ -217,15 +220,13 @@ if __name__ == "__main__":
         callbacks=[
             best_checkpoint_callback,
             checkpoint_callback,
-            # lr_monitor,
-            # model_summary,
         ],
         # profiler="simple",
     )
 
-    # trainer.fit(model, dataloader_train, dataloader_val)
+    trainer.fit(model, dataloader_train, dataloader_val)
 
-    model = LitFullySupervisedClassifier.load_from_checkpoint(
-        "checkpoints/10_512_1e-4/best_model_epoch=23.ckpt", device=config.device, label_map=label_map
-    )
-    trainer.validate(model, dataloader_val)
+    # model = LitFullySupervisedClassifier.load_from_checkpoint(
+    #     "checkpoints/10_512_1e-4/best_model_epoch=23.ckpt", device=config.device, label_map=label_map
+    # )
+    # trainer.validate(model, dataloader_val)
