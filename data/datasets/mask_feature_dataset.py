@@ -114,6 +114,27 @@ class MaskData(torch.utils.data.Dataset):
         }
 
 
+class CropFeatureMaskData(MaskData):
+    def __init__(self, mask_dir, ann_file, dino_dir, device, pad_num=700):
+        super().__init__(mask_dir, ann_file, device, pad_num)
+
+        self.dino_dir = dino_dir
+
+    def __getitem__(self, idx):
+        data = super().__getitem__(idx)
+        dino_features = torch.load(os.path.join(self.dino_dir, self.files[idx]), map_location=self.device)
+        data["crop_feature"] = dino_features
+
+        return data
+
+    @staticmethod
+    def collate_fn(data):
+        batch = MaskData.collate_fn(data)
+        batch["crop_features"] = torch.cat([d["crop_feature"] for d in data])
+
+        return batch
+
+
 class CropMaskData(MaskData):
     def __init__(self, box_dir, ann_file, img_dir, device, pad_num=700, resize=256, center_crop=224):
         super().__init__(box_dir, ann_file, device, pad_num)
@@ -163,7 +184,7 @@ class CropMaskData(MaskData):
 
 
 if __name__ == "__main__":
-    from tqdm import tqdm
+    # from tqdm import tqdm
 
     # dataset = MaskData("mask_features/train_all", "../datasets/coco/annotations/instances_train2017.json", "cpu")
 
@@ -178,17 +199,32 @@ if __name__ == "__main__":
     #     max_dim = max(max_dim, batch["mask_features"].shape[0])
     # print(max_dim)
 
-    dataset = CropMaskData(
-        "mask_features/train_all",
-        "../datasets/coco/annotations/instances_train2017.json",
-        "../datasets/coco/train2017",
+    # dataset = CropMaskData(
+    #     "mask_features/train_all",
+    #     "../datasets/coco/annotations/instances_train2017.json",
+    #     "../datasets/coco/train2017",
+    #     "cpu",
+    # )
+    # # print(dataset[0]["crops"].shape)
+    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropMaskData.collate_fn)
+    # for batch in dataloader:
+    #     print(batch.keys())
+    #     for crop in batch["crops"]:
+    #         print(crop.min())
+    #         print(crop.max())
+    #     break
+
+    dataset = CropFeatureMaskData(
+        "mask_features/val_all",
+        "../datasets/coco/annotations/instances_val2017.json",
+        "dino_features/val",
         "cpu",
     )
-    # print(dataset[0]["crops"].shape)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropMaskData.collate_fn)
+
+    # print(dataset[0]["crop_feature"].shape)
+
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropFeatureMaskData.collate_fn)
     for batch in dataloader:
         print(batch.keys())
-        for crop in batch["crops"]:
-            print(crop.min())
-            print(crop.max())
+        print(batch["crop_features"].shape)
         break
