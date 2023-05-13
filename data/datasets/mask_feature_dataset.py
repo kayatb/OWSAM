@@ -115,11 +115,12 @@ class MaskData(torch.utils.data.Dataset):
 
 
 class CropMaskData(MaskData):
-    def __init__(self, box_dir, ann_file, img_dir, device, pad_num=700, resize=128):
+    def __init__(self, box_dir, ann_file, img_dir, device, pad_num=700, resize=256, center_crop=224):
         super().__init__(box_dir, ann_file, device, pad_num)
 
         self.img_dir = img_dir
         self.resize = resize
+        self.center_crop = center_crop
 
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
@@ -143,7 +144,7 @@ class CropMaskData(MaskData):
         transform = T.Compose(
             [
                 T.Resize(self.resize),
-                T.CenterCrop(self.resize),
+                T.CenterCrop(self.center_crop),
                 T.ToTensor(),
                 T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
@@ -188,5 +189,6 @@ if __name__ == "__main__":
     for batch in dataloader:
         print(batch.keys())
         for crop in batch["crops"]:
-            print(crop.shape)
+            print(crop.min())
+            print(crop.max())
         break

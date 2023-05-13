@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models import resnet18
+from torchvision.models import resnet18, ResNet18_Weights
 
 
 class LinearClassifier(nn.Module):
@@ -58,7 +58,9 @@ class ResNetClassifier(nn.Module):
         self.num_classes = num_classes
         self.pad_num = pad_num
 
-        self.resnet = resnet18(weights=None)
+        # self.resnet = resnet18(weights=None)
+        self.resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+
         dim = self.resnet.fc.in_features
         self.resnet.fc = nn.Linear(dim, num_classes + 1)  # +1 for no-object/background class
 
