@@ -177,9 +177,9 @@ def load_data():
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=config.num_workers,
-        # persistent_workers=True,
-        # pin_memory=True,
-        # prefetch_factor=3,
+        persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
     )
 
     return dataloader_train, dataloader_val, dataset_val.continuous_to_cat_id
