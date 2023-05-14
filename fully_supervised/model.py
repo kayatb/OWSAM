@@ -6,7 +6,7 @@ from torchvision.models import resnet18, ResNet18_Weights
 class LinearClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
-    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=700, input_dim=256):
+    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=700, input_dim=1024):
         super().__init__()
 
         self.num_classes = num_classes
@@ -27,19 +27,20 @@ class LinearClassifier(nn.Module):
     def forward(self, batch):
         batch_size = batch["boxes"].shape[0]
 
-        x = self.layers(batch["mask_features"])
+        # x = self.layers(batch["mask_features"])
+        x = self.layers(batch["crop_features"].float())
         class_logits = self.classifier(x)
 
         # Split the class logits per image.
         class_logits = torch.split(class_logits, batch["num_masks"])
         padded_class_logits = torch.empty(
-            batch_size, self.pad_num, self.num_classes + 1, device=batch["mask_features"].device
+            batch_size, self.pad_num, self.num_classes + 1, device=batch["crop_features"].device
         )
         # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
         # Pad each image's logits with extremely low values (except no-object class)
         # to make the shape uniform across images.
         for i in range(batch_size):  # TODO: can you do this without a for-loop?
-            padding = torch.ones(self.num_classes + 1, device=batch["mask_features"].device) * -1000
+            padding = torch.ones(self.num_classes + 1, device=batch["crop_features"].device) * -1000
             padding[-1] = 1000  # Change prediction to no-object class
             padding = padding.repeat(self.pad_num - class_logits[i].shape[0], 1)
 

@@ -1,6 +1,6 @@
 """Config for the training of the fully-supervised classification model."""
 
-model_type = "resnet"
+model_type = "linear"
 assert model_type in ("linear", "resnet")
 
 num_layers = 10
@@ -17,6 +17,8 @@ masks_train = "mask_features/train_all"
 masks_val = "mask_features/val_all"
 img_train = "../datasets/coco/train2017"
 img_val = "../datasets/coco/val2017"
+crop_feat_train = "dino_features/train"
+crop_feat_val = "dino_features/val"
 
 num_classes = 80
 batch_size = 2

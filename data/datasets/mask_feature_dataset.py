@@ -122,7 +122,7 @@ class CropFeatureMaskData(MaskData):
 
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
-        dino_features = torch.load(os.path.join(self.dino_dir, self.files[idx]), map_location=self.device)
+        dino_features = torch.load(os.path.join(self.dino_dir, self.files[idx]))  # , map_location=self.device)
         data["crop_feature"] = dino_features
 
         return data
@@ -150,7 +150,7 @@ class CropMaskData(MaskData):
 
         # COCO image files have filename img_id prepended with 0's until length is 12.
         img_file = f"{str(data['img_id']).rjust(12, '0')}.jpg"
-        with Image.open(os.path.join(self.img_dir, img_file)) as img:  # TODO: how to get filename of image file?
+        with Image.open(os.path.join(self.img_dir, img_file)) as img:
             img = img.convert("RGB")
             crops = crop_bboxes_from_img(img, boxes)
 

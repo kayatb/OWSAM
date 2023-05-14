@@ -1,5 +1,5 @@
 import configs.fully_supervised as config
-from data.datasets.mask_feature_dataset import MaskData, CropMaskData
+from data.datasets.mask_feature_dataset import MaskData, CropMaskData, CropFeatureMaskData
 from fully_supervised.model import LinearClassifier, ResNetClassifier
 from fully_supervised.coco_eval import CocoEvaluator
 
@@ -140,9 +140,16 @@ def parse_args():
 
 def load_data():
     if config.model_type == "linear":
-        dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
-        dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
-        collate_fn = MaskData.collate_fn
+        # dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
+        # dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
+        # collate_fn = MaskData.collate_fn
+        dataset_train = CropFeatureMaskData(
+            config.masks_train, config.ann_train, config.crop_feat_train, config.device, pad_num=config.pad_num
+        )
+        dataset_val = CropFeatureMaskData(
+            config.masks_val, config.ann_val, config.crop_feat_val, config.device, pad_num=config.pad_num
+        )
+        collate_fn = CropFeatureMaskData.collate_fn
 
     elif config.model_type == "resnet":
         dataset_train = CropMaskData(
@@ -159,9 +166,9 @@ def load_data():
         shuffle=True,
         collate_fn=collate_fn,
         num_workers=config.num_workers,
-        persistent_workers=True,
-        pin_memory=True,
-        prefetch_factor=3,
+        # persistent_workers=True,
+        # pin_memory=True,
+        # prefetch_factor=3,
     )
 
     dataloader_val = DataLoader(
@@ -170,9 +177,9 @@ def load_data():
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=config.num_workers,
-        persistent_workers=True,
-        pin_memory=True,
-        prefetch_factor=3,
+        # persistent_workers=True,
+        # pin_memory=True,
+        # prefetch_factor=3,
     )
 
     return dataloader_train, dataloader_val, dataset_val.continuous_to_cat_id

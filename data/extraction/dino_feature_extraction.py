@@ -40,7 +40,7 @@ def save_dino_features(model, dataloader, save_dir, device):
         with torch.no_grad():
             features = model(crops)
 
-        torch.save(features.half(), os.path.join(save_dir, f"{batch['img_id'].item()}.pt"))
+        torch.save(features.half().cpu(), os.path.join(save_dir, f"{batch['img_id'].item()}.pt"))
         break
 
 
