@@ -4,7 +4,7 @@ model_type = "linear"
 assert model_type in ("linear", "resnet")
 
 num_layers = 10
-hidden_dim = 512
+hidden_dim = 2048
 
 epochs = 50
 lr = 1e-4
@@ -21,7 +21,7 @@ crop_feat_train = "dino_features/train"
 crop_feat_val = "dino_features/val"
 
 num_classes = 80
-batch_size = 2
+batch_size = 4
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 

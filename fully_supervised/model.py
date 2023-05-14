@@ -34,9 +34,7 @@ class LinearClassifier(nn.Module):
 
         self.layers = nn.Sequential()
         self.layers.append(nn.Linear(input_dim, hidden_dim))
-        self.layers.append(
-            nn.ReLU()
-        )  # TODO: change this to ELU (ReLU is here for pre-trained checkpoint compatibility)
+        self.layers.append(nn.ELU())
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.layers.append(nn.ELU())
@@ -46,6 +44,7 @@ class LinearClassifier(nn.Module):
     def forward(self, batch):
         # x = self.layers(batch["mask_features"])
         x = self.layers(batch["crop_features"].float())
+        # x = batch["crop_features"].float()
         class_logits = self.classifier(x)
 
         padded_class_logits = pad_class_logits(

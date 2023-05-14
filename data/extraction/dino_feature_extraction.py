@@ -32,6 +32,7 @@ def save_dino_features(model, dataloader, save_dir, device):
     print(f"All features are saved in {save_dir}")
     os.makedirs(save_dir, exist_ok=True)
 
+    model.eval()
     for batch in tqdm(dataloader):
         crops = batch["crops"].squeeze().to(device)
         if crops.dim() < 4:  # In case only a single bbox in this image, add a batch dim.
