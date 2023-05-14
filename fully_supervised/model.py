@@ -3,6 +3,25 @@ import torch.nn as nn
 from torchvision.models import resnet18, ResNet18_Weights
 
 
+def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device):
+    """Add a batch dim and padding to the class logits for loss calculation."""
+    batch_size = len(num_masks)
+
+    class_logits = torch.split(class_logits, num_masks)
+    padded_class_logits = torch.empty(batch_size, pad_num, num_classes + 1, device=device)
+    # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
+    # Pad each image's logits with extremely low values (except no-object class)
+    # to make the shape uniform across images.
+    for i in range(batch_size):  # TODO: can you do this without a for-loop?
+        padding = torch.ones(num_classes + 1, device=device) * -1000
+        padding[-1] = 1000  # Change prediction to no-object class
+        padding = padding.repeat(pad_num - class_logits[i].shape[0], 1)
+
+        padded_class_logits[i] = torch.cat((class_logits[i], padding))
+
+    return padded_class_logits
+
+
 class LinearClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
@@ -25,26 +44,13 @@ class LinearClassifier(nn.Module):
         self.classifier = nn.Linear(hidden_dim, self.num_classes + 1)  # +1 for the no-object/background class
 
     def forward(self, batch):
-        batch_size = batch["boxes"].shape[0]
-
         # x = self.layers(batch["mask_features"])
         x = self.layers(batch["crop_features"].float())
         class_logits = self.classifier(x)
 
-        # Split the class logits per image.
-        class_logits = torch.split(class_logits, batch["num_masks"])
-        padded_class_logits = torch.empty(
-            batch_size, self.pad_num, self.num_classes + 1, device=batch["crop_features"].device
+        padded_class_logits = pad_class_logits(
+            class_logits, batch["num_masks"], self.num_classes, self.pad_num, batch["boxes"].device
         )
-        # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
-        # Pad each image's logits with extremely low values (except no-object class)
-        # to make the shape uniform across images.
-        for i in range(batch_size):  # TODO: can you do this without a for-loop?
-            padding = torch.ones(self.num_classes + 1, device=batch["crop_features"].device) * -1000
-            padding[-1] = 1000  # Change prediction to no-object class
-            padding = padding.repeat(self.pad_num - class_logits[i].shape[0], 1)
-
-            padded_class_logits[i] = torch.cat((class_logits[i], padding))
 
         return {
             "pred_logits": padded_class_logits,
@@ -66,24 +72,11 @@ class ResNetClassifier(nn.Module):
         self.resnet.fc = nn.Linear(dim, num_classes + 1)  # +1 for no-object/background class
 
     def forward(self, batch):
-        batch_size = batch["boxes"].shape[0]
         class_logits = self.resnet(batch["crops"])
 
-        # TODO: copy-paste from class above, make this a function.
-        # Split the class logits per image.
-        class_logits = torch.split(class_logits, batch["num_masks"])
-        padded_class_logits = torch.empty(
-            batch_size, self.pad_num, self.num_classes + 1, device=batch["mask_features"].device
+        padded_class_logits = pad_class_logits(
+            class_logits, batch["num_masks"], self.num_classes, self.pad_num, batch["boxes"].device
         )
-        # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
-        # Pad each image's logits with extremely low values (except no-object class)
-        # to make the shape uniform across images.
-        for i in range(batch_size):  # TODO: can you do this without a for-loop?
-            padding = torch.ones(self.num_classes + 1, device=batch["mask_features"].device) * -1000
-            padding[-1] = 1000  # Change prediction to no-object class
-            padding = padding.repeat(self.pad_num - class_logits[i].shape[0], 1)
-
-            padded_class_logits[i] = torch.cat((class_logits[i], padding))
 
         return {
             "pred_logits": padded_class_logits,
