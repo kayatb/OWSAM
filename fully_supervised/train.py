@@ -1,5 +1,5 @@
 import configs.fully_supervised as config
-from data.datasets.mask_feature_dataset import MaskData, CropMaskData, CropFeatureMaskData
+from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData
 from fully_supervised.model import LinearClassifier, ResNetClassifier
 from fully_supervised.coco_eval import CocoEvaluator
 
@@ -26,6 +26,13 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
         # self.evaluator.coco_eval["bbox"].params.useCats = 0  # For calculating object vs no-object mAP
 
+        # Log the hyperparameters
+        # self.log("hp/model_type", config.model_type)
+        self.log("hp/num_layers", config.num_layers)
+        self.log("hp/hidden_dim", config.hidden_dim)
+        self.log("hp/batch_size", config.batch_size)
+        self.log("hp/lr", config.lr)
+
     def training_step(self, batch, batch_idx):
         outputs = self.model(batch)
         loss = self.criterion(outputs, batch["targets"])
@@ -34,7 +41,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             "train_class_error",
             loss["class_error"].item(),
             batch_size=len(batch["boxes"]),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -43,7 +50,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             "train_loss_ce",
             loss["loss"].item(),
             batch_size=len(batch["boxes"]),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -93,7 +100,9 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
     def load_model(self, device):
         if config.model_type == "linear":
-            model = LinearClassifier(config.num_layers, config.hidden_dim, config.num_classes, pad_num=config.pad_num)
+            model = LinearClassifier(
+                config.num_layers, config.hidden_dim, config.num_classes, config.dropout, pad_num=config.pad_num
+            )
         elif config.model_type == "resnet":
             model = ResNetClassifier(config.num_classes, config.pad_num)
         else:
@@ -234,6 +243,8 @@ if __name__ == "__main__":
     trainer.fit(model, dataloader_train, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
-    #     "checkpoints/10_512_1e-4/best_model_epoch=23.ckpt", device=config.device, label_map=label_map
+    #     "checkpoints/dino_features/supervised_coco_dino_3layers_2048dim_1e-3lr-6oT8y-2741952/best_model_epoch=7.ckpt",
+    #     device=config.device,
+    #     label_map=label_map,
     # )
     # trainer.validate(model, dataloader_val)

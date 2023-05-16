@@ -3,13 +3,14 @@
 model_type = "linear"
 assert model_type in ("linear", "resnet")
 
-num_layers = 10
+num_layers = 5
 hidden_dim = 2048
 
 epochs = 50
 lr = 1e-4
 weight_decay = None
 clip = None  # Gradient clipping
+dropout = 0.1
 
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"

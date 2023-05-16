@@ -25,7 +25,7 @@ def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device):
 class LinearClassifier(nn.Module):
     """A simple classification head on top of the hidden mask features extracted from SAM to classify the masks."""
 
-    def __init__(self, num_layers, hidden_dim, num_classes, pad_num=700, input_dim=1024):
+    def __init__(self, num_layers, hidden_dim, num_classes, dropout_prob, pad_num=700, input_dim=1024):
         super().__init__()
 
         self.num_classes = num_classes
@@ -34,9 +34,11 @@ class LinearClassifier(nn.Module):
 
         self.layers = nn.Sequential()
         self.layers.append(nn.Linear(input_dim, hidden_dim))
+        self.layers.append(nn.Dropout(dropout_prob))
         self.layers.append(nn.ELU())
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
+            self.layers.append(nn.Dropout(dropout_prob))
             self.layers.append(nn.ELU())
 
         self.classifier = nn.Linear(hidden_dim, self.num_classes + 1)  # +1 for the no-object/background class
