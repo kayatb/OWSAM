@@ -68,7 +68,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             batch_size=len(batch["boxes"]),
             on_step=False,
             on_epoch=True,
-            prog_bar=False,
+            prog_bar=True,
             logger=True,
         )
         self.log(

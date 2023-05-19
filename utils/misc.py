@@ -1,22 +1,32 @@
-import utils.coco_ids_without_anns as empty_ids
+# import utils.coco_ids_without_anns as empty_ids
+import utils.coco_ids_without_anns
+import utils.lvis_ids_without_anns
 
-import os
 import pickle
 import torch
 import torch.distributed as dist
 import numpy as np
 
 
-def filter_empty_imgs(files):
+def filter_empty_imgs(ids, dataset="coco"):
     """Filter out image IDs for images that only contain the background class and
     thus have no annotations."""
-    filtered_files = []
-    for file in files:
-        id = int(os.path.splitext(file)[0])
-        if id in empty_ids.train_ids or id in empty_ids.val_ids:
+    if dataset == "coco":
+        empty_train_ids = utils.coco_ids_without_anns.train_ids
+        empty_val_ids = utils.coco_ids_without_anns.val_ids
+    elif dataset == "lvis":
+        empty_train_ids = utils.lvis_ids_without_anns.train_ids
+        empty_val_ids = utils.lvis_ids_without_anns.val_ids
+    else:
+        raise ValueError(f"Unkown dataset `{dataset}` given. Choose either `lvis` or `coco`.")
+
+    filtered_ids = []
+    for id in ids:
+        # id = int(os.path.splitext(file)[0])
+        if id in empty_train_ids or id in empty_val_ids:
             continue
-        filtered_files.append(file)
-    return filtered_files
+        filtered_ids.append(id)
+    return filtered_ids
 
 
 def crop_bboxes_from_img(img, boxes):

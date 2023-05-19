@@ -22,7 +22,7 @@ pip install -e .
 
 Install additional tools:
 ```bash
-pip install opencv-python pycocotools matplotlib tqdm lightning scipy tensorboard
+pip install opencv-python pycocotools matplotlib tqdm lightning scipy tensorboard lvis
 ```
 
 For hyperparameter tuning:

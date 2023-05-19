@@ -4,6 +4,7 @@ import torch
 import torchvision.transforms as T
 import os
 from pycocotools.coco import COCO
+from lvis import LVIS
 from PIL import Image
 
 
@@ -13,17 +14,34 @@ class MaskData(torch.utils.data.Dataset):
     def __init__(self, dir, ann_file, device, pad_num=700):
         """Load the masks and their features from `dir`."""
         self.dir = dir
-        self.files = filter_empty_imgs(os.listdir(dir))
-        self.coco = COCO(ann_file)
+
         self.device = device
         self.pad_num = pad_num
 
         # Create a mapping from category ID to category name.
         self.cat_id_to_name = {}
-        for category in self.coco.loadCats(self.coco.getCatIds()):
-            self.cat_id_to_name[category["id"]] = category["name"]
 
-        # COCO class ids are non-continuous. Map them to a continuous range and vice versa.
+        if "coco" in ann_file:
+            self.target_mode = "coco"
+            self.coco = COCO(ann_file)
+            self.img_ids = filter_empty_imgs(self.coco.getImgIds(), dataset="coco")
+            self.get_targets = self.get_coco_targets
+
+            for category in self.coco.loadCats(self.coco.getCatIds()):
+                self.cat_id_to_name[category["id"]] = category["name"]
+
+        elif "lvis" in ann_file:
+            self.target_mode = "lvis"
+            self.lvis = LVIS(ann_file)
+            self.img_ids = filter_empty_imgs(self.lvis.get_img_ids(), dataset="lvis")
+            self.get_targets = self.get_lvis_targets
+
+            for category in self.lvis.load_cats(self.lvis.get_cat_ids()):
+                self.cat_id_to_name[category["id"]] = category["name"]
+        else:
+            raise ValueError(f"Can't infer target mode from annotation file location `{ann_file}`.")
+
+        # Class ids are non-continuous. Map them to a continuous range and vice versa.
         self.cat_id_to_continuous = {}
         self.continuous_to_cat_id = {}
         for i, id in enumerate(self.cat_id_to_name.keys()):
@@ -33,13 +51,13 @@ class MaskData(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),
         and the targets (class labels and segmentation masks) from the COCO dataset."""
-        file_path = os.path.join(self.dir, self.files[idx])
+        file_path = os.path.join(self.dir, f"{self.img_ids[idx]}.pt")
         # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
         # keys: 'area', 'bbox', 'predicted_iou', 'stability_score', 'mask_feature'
         mask_data = torch.load(file_path, map_location=self.device)
 
-        img_id = int(os.path.splitext(self.files[idx])[0])
-        targets = self.get_coco_targets(img_id)
+        # img_id = int(os.path.splitext(self.files[idx])[0])
+        targets = self.get_targets(self.img_ids[idx])
 
         # Pad the output to a uniform number for batched processing.
         # The number of masks outputted by SAM is not constant, so pad with
@@ -62,25 +80,16 @@ class MaskData(torch.utils.data.Dataset):
             "mask_features": mask_features,
             "iou_scores": iou_scores,
             "num_masks": num_masks,  # The number of actual masks (i.e. without padding)
-            "img_id": img_id,
+            "img_id": self.img_ids[idx],
             "targets": targets,
         }
 
     def __len__(self):
-        return len(self.files)
-
-    # def get_mask_data(self, path):
-    #     """The pre-extracted masks are saved as a single object in a tar.gz file."""
-    #     with gzip.open(path, "rb") as fp:
-    #         mask_data = torch.load(io.BytesIO(fp.read()), map_location=self.device)
-
-    #     # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
-    #     # keys: 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'mask_feature'
-    #     return mask_data
+        return len(self.img_ids)
 
     def get_coco_targets(self, img_id):
-        """Get the COCO annotations belonging to the image embedding.
-        Convert the annotation to the format expected by the criterion."""
+        """Get the COCO annotations belonging to the image.
+        Convert the annotations to the format expected by the criterion."""
         ann_ids = self.coco.getAnnIds(imgIds=[img_id], iscrowd=None)
         assert len(ann_ids) > 0, f"No annotations found for image `{img_id}`. Check the annotation file."
         anns = self.coco.loadAnns(ann_ids)
@@ -93,9 +102,23 @@ class MaskData(torch.utils.data.Dataset):
 
         return targets
 
+    def get_lvis_targets(self, img_id):
+        """Get the LVIS annotations belonging to the image.
+        Convert the annotaitons to the format expected by the criterion."""
+        ann_ids = self.lvis.get_ann_ids(img_ids=[img_id])
+        assert len(ann_ids) > 0, f"No annotations found for image `{img_id}`. Check the annotation file."
+        anns = self.lvis.load_anns(ann_ids)
+
+        targets = {}
+        targets["labels"] = torch.as_tensor(
+            [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
+        )
+        targets["boxes"] = torch.as_tensor([ann["bbox"] for ann in anns])
+
+        return targets
+
     @staticmethod
     def collate_fn(data):
-        # masks = [d["masks"] for d in data]
         boxes = torch.stack([d["boxes"] for d in data])
         mask_features = torch.cat([d["mask_features"] for d in data])
         iou_scores = torch.stack([d["iou_scores"] for d in data])
@@ -104,7 +127,6 @@ class MaskData(torch.utils.data.Dataset):
         targets = [d["targets"] for d in data]
 
         return {
-            # "masks": masks,
             "boxes": boxes,
             "mask_features": mask_features,
             "iou_scores": iou_scores,
@@ -122,7 +144,9 @@ class CropFeatureMaskData(MaskData):
 
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
-        dino_features = torch.load(os.path.join(self.dino_dir, self.files[idx]))  # , map_location=self.device)
+        dino_features = torch.load(
+            os.path.join(self.dino_dir, f"{self.img_ids[idx]}.pt")
+        )  # , map_location=self.device)
         data["crop_feature"] = dino_features
 
         return data
@@ -171,7 +195,7 @@ class CropMaskData(MaskData):
             ]
         )
 
-        img = transform(img)[:3]  # .unsqueeze(0)
+        img = transform(img)[:3]
 
         return img
 
@@ -184,7 +208,7 @@ class CropMaskData(MaskData):
 
 
 if __name__ == "__main__":
-    # from tqdm import tqdm
+    from tqdm import tqdm
 
     # dataset = MaskData("mask_features/train_all", "../datasets/coco/annotations/instances_train2017.json", "cpu")
 
@@ -215,16 +239,21 @@ if __name__ == "__main__":
     #     break
 
     dataset = CropFeatureMaskData(
-        "mask_features/val_all",
-        "../datasets/coco/annotations/instances_val2017.json",
-        "dino_features/val",
+        "mask_features/all",
+        # "../datasets/coco/annotations/instances_val2017.json",
+        "../datasets/lvis/lvis_v1_train.json",
+        "dino_features/all",
         "cpu",
+        # lvis_ann_file="../datasets/lvis/lvis_v1_val.json",
     )
 
-    # print(dataset[0]["crop_feature"].shape)
+    # print(dataset[0]["lvis_targets"])
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropFeatureMaskData.collate_fn)
-    for batch in dataloader:
-        print(batch.keys())
-        print(batch["crop_features"].shape)
-        break
+    for batch in tqdm(dataloader):
+        # print(batch.keys())
+        # print(batch["crop_features"].shape)
+        # break
+        # print(batch["targets"])
+        # break
+        continue
