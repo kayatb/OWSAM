@@ -12,6 +12,9 @@ weight_decay = None
 clip = None  # Gradient clipping
 dropout = 0.1
 
+use_mixup = True
+mixup_alpha = 0.2
+
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
 masks_dir = "mask_features/all"

@@ -2,7 +2,7 @@
 The DETR Loss.
 Copied and adapted from: https://github.com/facebookresearch/detr/blob/main/models/detr.py
 """
-# from utils import box_ops
+from modelling.mixup import mixup, mixup_cross_entropy_loss
 
 import torch
 import torch.nn.functional as F
@@ -10,7 +10,7 @@ from torch import nn
 import torch.distributed as dist
 
 
-# Some util functions copied from DETR.util.misc
+# ===== Some util functions copied from DETR.util.misc =====
 @torch.no_grad()
 def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
@@ -44,6 +44,9 @@ def get_world_size():
     return dist.get_world_size()
 
 
+# ===== End of DETR util copy =====
+
+
 class SetCriterion(nn.Module):
     """This class computes the loss for DETR.
     The process happens in two steps:
@@ -51,7 +54,7 @@ class SetCriterion(nn.Module):
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
 
-    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
+    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, use_mixup=False, mixup_alpha=0.0):
         """Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -66,6 +69,10 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
+
+        self.use_mixup = use_mixup  # Whether to use mix-up augmentation
+        self.mixup_alpha = mixup_alpha
+
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer("empty_weight", empty_weight)
@@ -82,8 +89,17 @@ class SetCriterion(nn.Module):
         target_classes = torch.full(src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
 
-        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
-        losses = {"loss": loss_ce}
+        if self.use_mixup and self.training:
+            # FIXME: does the padding have an impact on this?
+            # FIXME: don't know if +1 or not
+            mixed_logits, mixed_targets = mixup(src_logits, target_classes, self.mixup_alpha, self.num_classes + 1)
+
+            loss_ce = mixup_cross_entropy_loss(mixed_logits, mixed_targets)
+            losses = {"loss": loss_ce}
+
+        else:
+            loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+            losses = {"loss": loss_ce}
 
         if log:
             # TODO this should probably be a separate loss, not hacked in this one here

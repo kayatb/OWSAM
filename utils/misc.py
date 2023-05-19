@@ -8,6 +8,16 @@ import torch.distributed as dist
 import numpy as np
 
 
+def labels_to_onehot(labels, num_classes):
+    """Labels to one-hot encoding."""
+    return torch.nn.functional.one_hot(labels, num_classes=num_classes)
+
+
+def onehot_to_labels(onehot):
+    """One-hot encoding to labels."""
+    return torch.argmax(onehot, dim=-1)
+
+
 def filter_empty_imgs(ids, dataset="coco"):
     """Filter out image IDs for images that only contain the background class and
     thus have no annotations."""

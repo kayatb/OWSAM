@@ -121,7 +121,13 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
         matcher = HungarianMatcher()
         criterion = SetCriterion(
-            self.model.num_classes, matcher, weight_dict=weight_dict, eos_coef=eos_coef, losses=losses
+            self.model.num_classes,
+            matcher,
+            weight_dict=weight_dict,
+            eos_coef=eos_coef,
+            losses=losses,
+            use_mixup=config.use_mixup,
+            mixup_alpha=config.mixup_alpha,
         )
         criterion.to(device)
 
