@@ -14,12 +14,10 @@ dropout = 0.1
 
 ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
-masks_train = "mask_features/train_all"
-masks_val = "mask_features/val_all"
+masks_dir = "mask_features/all"
 img_train = "../datasets/coco/train2017"
 img_val = "../datasets/coco/val2017"
-crop_feat_train = "dino_features/train"
-crop_feat_val = "dino_features/val"
+crop_feat_dir = "dino_features/all"
 
 num_classes = 80
 batch_size = 4

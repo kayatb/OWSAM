@@ -153,19 +153,19 @@ def load_data():
         # dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
         # collate_fn = MaskData.collate_fn
         dataset_train = CropFeatureMaskData(
-            config.masks_train, config.ann_train, config.crop_feat_train, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_train, config.crop_feat_dir, config.device, pad_num=config.pad_num
         )
         dataset_val = CropFeatureMaskData(
-            config.masks_val, config.ann_val, config.crop_feat_val, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_val, config.crop_feat_dir, config.device, pad_num=config.pad_num
         )
         collate_fn = CropFeatureMaskData.collate_fn
 
     elif config.model_type == "resnet":
         dataset_train = CropMaskData(
-            config.masks_train, config.ann_train, config.img_train, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_train, config.img_train, config.device, pad_num=config.pad_num
         )
         dataset_val = CropMaskData(
-            config.masks_val, config.ann_val, config.img_val, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_val, config.img_val, config.device, pad_num=config.pad_num
         )
         collate_fn = CropMaskData.collate_fn
 
