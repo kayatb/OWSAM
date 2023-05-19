@@ -27,7 +27,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         # self.evaluator.coco_eval["bbox"].params.useCats = 0  # For calculating object vs no-object mAP
 
         # Log the hyperparameters
-        # self.log("hp/model_type", config.model_type)
         self.log("hp/num_layers", config.num_layers)
         self.log("hp/hidden_dim", config.hidden_dim)
         self.log("hp/batch_size", config.batch_size)
@@ -94,7 +93,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.evaluator.reset()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)  # , weight_decay=config.weight_decay)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)
 
         return optimizer
 
@@ -115,10 +114,10 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         """Use the DETR loss (but only the classification part)."""
         # Default DETR values
         eos_coef = 0.05  # Was 0.1
-        weight_dict = {"loss_ce": 1, "loss_bbox": 5}
+        weight_dict = {"loss_ce": 0, "loss_bbox": 5}
         weight_dict["loss_giou"] = 2
 
-        losses = ["labels"]  # , "boxes", "cardinality"]
+        losses = ["labels"]
 
         matcher = HungarianMatcher()
         criterion = SetCriterion(
@@ -149,9 +148,6 @@ def parse_args():
 
 def load_data():
     if config.model_type == "linear":
-        # dataset_train = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
-        # dataset_val = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
-        # collate_fn = MaskData.collate_fn
         dataset_train = CropFeatureMaskData(
             config.masks_dir, config.ann_train, config.crop_feat_dir, config.device, pad_num=config.pad_num
         )
