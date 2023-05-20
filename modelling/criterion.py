@@ -2,7 +2,7 @@
 The DETR Loss.
 Copied and adapted from: https://github.com/facebookresearch/detr/blob/main/models/detr.py
 """
-from modelling.mixup import mixup, mixup_cross_entropy_loss
+from modelling.mixup import mixup
 
 import torch
 import torch.nn.functional as F
@@ -90,11 +90,18 @@ class SetCriterion(nn.Module):
         target_classes[idx] = target_classes_o
 
         if self.use_mixup and self.training:
+            bs, num_queries = src_logits.shape[:2]
+            # Flatten the predictions and targets to perform mix-up across batches.
+            flat_logits = src_logits.flatten(0, 1)
+            flat_targets = target_classes.flatten(0, 1)
             # FIXME: does the padding have an impact on this?
-            # FIXME: don't know if +1 or not
-            mixed_logits, mixed_targets = mixup(src_logits, target_classes, self.mixup_alpha, self.num_classes + 1)
+            mixed_logits, mixed_targets = mixup(flat_logits, flat_targets, self.mixup_alpha, self.num_classes + 1)
 
-            loss_ce = mixup_cross_entropy_loss(mixed_logits, mixed_targets)
+            # Reshape everything to the orginal shape
+            mixed_logits = mixed_logits.view(bs, num_queries, -1)
+            mixed_targets = mixed_targets.view(bs, num_queries, -1)
+
+            loss_ce = F.cross_entropy(mixed_logits.transpose(1, 2), mixed_targets.transpose(1, 2), self.empty_weight)
             losses = {"loss": loss_ce}
 
         else:
@@ -104,6 +111,7 @@ class SetCriterion(nn.Module):
         if log:
             # TODO this should probably be a separate loss, not hacked in this one here
             losses["class_error"] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
+
         return losses
 
     # @torch.no_grad()
