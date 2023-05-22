@@ -77,105 +77,61 @@ class SetCriterion(nn.Module):
         empty_weight[-1] = self.eos_coef
         self.register_buffer("empty_weight", empty_weight)
 
-    def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
+    def loss_labels(self, outputs, targets, indices, log=True, use_mixup=False, num_masks=None):
         """Classification loss (NLL)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
         assert "pred_logits" in outputs
         src_logits = outputs["pred_logits"]
 
-        idx = self._get_src_permutation_idx(indices)
-        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
-        target_classes = torch.full(src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device)
-        target_classes[idx] = target_classes_o
-
-        if self.use_mixup and self.training:
-            bs, num_queries = src_logits.shape[:2]
-            # Flatten the predictions and targets to perform mix-up across batches.
-            flat_logits = src_logits.flatten(0, 1)
-            flat_targets = target_classes.flatten(0, 1)
-            # FIXME: does the padding have an impact on this?
-            mixed_logits, mixed_targets = mixup(flat_logits, flat_targets, self.mixup_alpha, self.num_classes + 1)
-
-            # Reshape everything to the orginal shape
-            mixed_logits = mixed_logits.view(bs, num_queries, -1)
-            mixed_targets = mixed_targets.view(bs, num_queries, -1)
-
-            loss_ce = F.cross_entropy(mixed_logits.transpose(1, 2), mixed_targets.transpose(1, 2), self.empty_weight)
-            losses = {"loss": loss_ce}
-
+        if not use_mixup:
+            idx = self._get_src_permutation_idx(indices)
+            target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+            target_classes = torch.full(
+                src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device
+            )
+            target_classes[idx] = target_classes_o
         else:
-            loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
-            losses = {"loss": loss_ce}
+            batch_size = len(num_masks)
+            pad_num = src_logits.shape[1]
 
-        if log:
+            target_labels = torch.split(targets, num_masks)
+            target_classes = torch.empty(batch_size, pad_num, self.num_classes + 1, device=src_logits.device)
+            # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
+            # Pad each image's logits with extremely low values (except no-object class)
+            # to make the shape uniform across images.
+            for i in range(batch_size):  # TODO: can you do this without a for-loop?
+                padding = torch.zeros(self.num_classes + 1, device=src_logits.device)
+                padding[-1] = self.num_classes  # Change prediction to no-object class
+                padding = padding.repeat(pad_num - target_labels[i].shape[0], 1)
+
+                target_classes[i] = torch.cat((target_labels[i], padding))
+            target_classes = target_classes.transpose(1, 2)
+
+        # if self.use_mixup and self.training:
+        #     bs, num_queries = src_logits.shape[:2]
+        #     # Flatten the predictions and targets to perform mix-up across batches.
+        #     flat_logits = src_logits.flatten(0, 1)
+        #     flat_targets = target_classes.flatten(0, 1)
+        #     # FIXME: does the padding have an impact on this?
+        #     mixed_logits, mixed_targets = mixup(flat_logits, flat_targets, self.mixup_alpha, self.num_classes + 1)
+
+        #     # Reshape everything to the orginal shape
+        #     mixed_logits = mixed_logits.view(bs, num_queries, -1)
+        #     mixed_targets = mixed_targets.view(bs, num_queries, -1)
+
+        #     loss_ce = F.cross_entropy(mixed_logits.transpose(1, 2), mixed_targets.transpose(1, 2), self.empty_weight)
+        #     losses = {"loss": loss_ce}
+
+        # else:
+        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+        losses = {"loss": loss_ce}
+
+        if log and not use_mixup:  # TODO: make this possible with mix up as well.
             # TODO this should probably be a separate loss, not hacked in this one here
             losses["class_error"] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
 
         return losses
-
-    # @torch.no_grad()
-    # def loss_cardinality(self, outputs, targets, indices, num_boxes):
-    #     """Compute the cardinality error, ie the absolute error in the number of predicted non-empty boxes
-    #     This is not really a loss, it is intended for logging purposes only. It doesn't propagate gradients
-    #     """
-    #     pred_logits = outputs["pred_logits"]
-    #     device = pred_logits.device
-    #     tgt_lengths = torch.as_tensor([len(v["labels"]) for v in targets], device=device)
-    #     # Count the number of predictions that are NOT "no-object" (which is the last class)
-    #     card_pred = (pred_logits.argmax(-1) != pred_logits.shape[-1] - 1).sum(1)
-    #     card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
-    #     losses = {"cardinality_error": card_err}
-    #     return losses
-
-    # def loss_boxes(self, outputs, targets, indices, num_boxes):
-    #     """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
-    #     targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
-    #     The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
-    #     """
-    #     assert "pred_boxes" in outputs
-    #     idx = self._get_src_permutation_idx(indices)
-    #     src_boxes = outputs["pred_boxes"][idx]
-    #     target_boxes = torch.cat([t["boxes"][i] for t, (_, i) in zip(targets, indices)], dim=0)
-
-    #     loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction="none")
-
-    #     losses = {}
-    #     losses["loss_bbox"] = loss_bbox.sum() / num_boxes
-
-    #     loss_giou = 1 - torch.diag(
-    #         box_ops.generalized_box_iou(box_ops.box_cxcywh_to_xyxy(src_boxes), box_ops.box_cxcywh_to_xyxy(target_boxes))
-    #     )
-    #     losses["loss_giou"] = loss_giou.sum() / num_boxes
-    #     return losses
-
-    # def loss_masks(self, outputs, targets, indices, num_boxes):
-    #     """Compute the losses related to the masks: the focal loss and the dice loss.
-    #     targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
-    #     """
-    #     assert "pred_masks" in outputs
-
-    #     src_idx = self._get_src_permutation_idx(indices)
-    #     tgt_idx = self._get_tgt_permutation_idx(indices)
-    #     src_masks = outputs["pred_masks"]
-    #     src_masks = src_masks[src_idx]
-    #     masks = [t["masks"] for t in targets]
-    #     # TODO use valid to mask invalid areas due to padding in loss
-    #     target_masks, valid = nested_tensor_from_tensor_list(masks).decompose()
-    #     target_masks = target_masks.to(src_masks)
-    #     target_masks = target_masks[tgt_idx]
-
-    #     # upsample predictions to the target size
-    #     src_masks = interpolate(src_masks[:, None], size=target_masks.shape[-2:], mode="bilinear", align_corners=False)
-    #     src_masks = src_masks[:, 0].flatten(1)
-
-    #     target_masks = target_masks.flatten(1)
-    #     target_masks = target_masks.view(src_masks.shape)
-    #     losses = {
-    #         "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
-    #         "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
-    #     }
-    #     return losses
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
@@ -183,13 +139,7 @@ class SetCriterion(nn.Module):
         src_idx = torch.cat([src for (src, _) in indices])
         return batch_idx, src_idx
 
-    def _get_tgt_permutation_idx(self, indices):
-        # permute targets following indices
-        batch_idx = torch.cat([torch.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)])
-        tgt_idx = torch.cat([tgt for (_, tgt) in indices])
-        return batch_idx, tgt_idx
-
-    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+    def get_loss(self, loss, outputs, targets, indices, **kwargs):
         loss_map = {
             "labels": self.loss_labels,
             # "cardinality": self.loss_cardinality,
@@ -197,31 +147,34 @@ class SetCriterion(nn.Module):
             # "masks": self.loss_masks,
         }
         assert loss in loss_map, f"do you really want to compute {loss} loss?"
-        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+        return loss_map[loss](outputs, targets, indices, **kwargs)
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, use_mixup=False, num_masks=None):
         """This performs the loss computation.
         Parameters:
              outputs: dict of tensors, see the output specification of the model for the format
              targets: list of dicts, such that len(targets) == batch_size.
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
-        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"}
+        if not use_mixup:
+            outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"}
 
-        # Retrieve the matching between the outputs of the last layer and the targets
-        indices = self.matcher(outputs_without_aux, targets)
+            # Retrieve the matching between the outputs of the last layer and the targets
+            indices = self.matcher(outputs_without_aux, targets)
+        else:
+            indices = None
 
         # Compute the average number of target boxes accross all nodes, for normalization purposes
-        num_boxes = sum(len(t["labels"]) for t in targets)
-        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float)  # , device=next(iter(outputs.values())).device)
-        if is_dist_avail_and_initialized():
-            torch.distributed.all_reduce(num_boxes)
-        num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
+        # num_boxes = sum(len(t["labels"]) for t in targets)
+        # num_boxes = torch.as_tensor([num_boxes], dtype=torch.float)  # , device=next(iter(outputs.values())).device)
+        # if is_dist_avail_and_initialized():
+        #     torch.distributed.all_reduce(num_boxes)
+        # num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
 
         # Compute all the requested losses
         losses = {}
         for loss in self.losses:
-            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+            losses.update(self.get_loss(loss, outputs, targets, indices, use_mixup=use_mixup, num_masks=num_masks))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if "aux_outputs" in outputs:

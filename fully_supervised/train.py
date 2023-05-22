@@ -5,6 +5,7 @@ from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
+from modelling.mixup import mixup
 
 import argparse
 import torch
@@ -33,18 +34,26 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.log("hp/lr", config.lr)
 
     def training_step(self, batch, batch_idx):
-        outputs = self.model(batch)
-        loss = self.criterion(outputs, batch["targets"])
+        if config.use_mixup and self.training:
+            mixed_features, mixed_targets = self.do_mixup(batch)
+            batch["crop_features"] = mixed_features
+            outputs = self.model(batch)
+            loss = self.criterion(outputs, mixed_targets, use_mixup=True, num_masks=batch["num_masks"])
 
-        self.log(
-            "train_class_error",
-            loss["class_error"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        else:
+            outputs = self.model(batch)
+            loss = self.criterion(outputs, batch["targets"], use_mixup=False)
+
+            self.log(  # TODO: make this possible with mix-up as well.
+                "train_class_error",
+                loss["class_error"].item(),
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+
         self.log(
             "train_loss_ce",
             loss["loss"].item(),
@@ -132,6 +141,37 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         criterion.to(device)
 
         return criterion
+
+    def do_mixup(self, batch):
+        """Use the Hungarian Matcher used for the criterion to match the input with the targets based on IoU and L2
+        bbox distance. Then perform mix-up augmentation."""
+        input = {"pred_boxes": batch["boxes"]}  # Format necessary for the matcher.
+        src_features = batch["crop_features"]
+
+        # Retrieve the matching between the outputs of the last layer and the targets
+        indices = self.criterion.matcher(input, batch["targets"])
+        idx = self.criterion._get_src_permutation_idx(indices)
+
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(batch["targets"], indices)])
+        # target_boxes_o = torch.cat([t["boxes"][J] for t, (_, J) in zip(batch["targets"], indices)])
+        # target_classes_boxes = torch.cat([t["boxes"][J] for t, (_, J) in zip(batch["targets"], indices)])
+
+        target_classes = (
+            torch.ones(src_features.shape[0], dtype=torch.int64, device=src_features.device)
+            * self.criterion.num_classes
+        )
+        # target_boxes = torch.zeros((src_features.shape[0], 4), dtype=torch.int64, device=src_features.device)
+        target_classes[idx[1]] = target_classes_o
+        # target_boxes[idx[1]] = target_boxes_o
+
+        # Mix it up!
+        mixed_features, mixed_labels = mixup(
+            src_features, target_classes, config.mixup_alpha, self.criterion.num_classes + 1
+        )
+
+        # mixed_targets = {"labels": mixed_labels, "boxes": target_boxes}
+
+        return mixed_features, mixed_labels
 
 
 def parse_args():
