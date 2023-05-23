@@ -3,7 +3,8 @@ import torch.nn as nn
 from torchvision.models import resnet18, ResNet18_Weights
 
 
-def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device):
+# TODO: put this in utils and change function name
+def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device, mode="logits"):
     """Add a batch dim and padding to the class logits for loss calculation."""
     batch_size = len(num_masks)
 
@@ -13,8 +14,15 @@ def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device):
     # Pad each image's logits with extremely low values (except no-object class)
     # to make the shape uniform across images.
     for i in range(batch_size):  # TODO: can you do this without a for-loop?
-        padding = torch.ones(num_classes + 1, device=device) * -1000
-        padding[-1] = 1000  # Change prediction to no-object class
+        if mode == "logits":
+            padding = torch.ones(num_classes + 1, device=device) * -1000
+            padding[-1] = 1000  # Change prediction to no-object class
+        elif mode == "targets":
+            padding = torch.ones(num_classes + 1, device=device)
+            padding[-1] = 1
+        else:
+            raise ValueError(f"Unkown pad mode `{mode}` given. Available are `logits` and `targets`.")
+
         padding = padding.repeat(pad_num - class_logits[i].shape[0], 1)
 
         padded_class_logits[i] = torch.cat((class_logits[i], padding))

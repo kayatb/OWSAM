@@ -2,14 +2,14 @@
 Copied and adapted from: https://github.com/hysts/pytorch_mixup/blob/master/utils.py
 """
 
-from utils.misc import labels_to_onehot, onehot_to_labels
+from utils.misc import labels_to_onehot
 
 import torch
 import torch.nn.functional as F
 import numpy as np
 
 
-def mixup(predictions, targets, alpha, n_classes):
+def mixup(predictions, targets, alpha, n_classes, num_masks, pad_num):
     indices = torch.randperm(predictions.size(0))
     predictions2 = predictions[indices]
     targets2 = targets[indices]

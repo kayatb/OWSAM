@@ -92,43 +92,12 @@ class SetCriterion(nn.Module):
             )
             target_classes[idx] = target_classes_o
         else:
-            batch_size = len(num_masks)
-            pad_num = src_logits.shape[1]
+            target_classes = targets.transpose(1, 2)
 
-            target_labels = torch.split(targets, num_masks)
-            target_classes = torch.empty(batch_size, pad_num, self.num_classes + 1, device=src_logits.device)
-            # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
-            # Pad each image's logits with extremely low values (except no-object class)
-            # to make the shape uniform across images.
-            for i in range(batch_size):  # TODO: can you do this without a for-loop?
-                padding = torch.zeros(self.num_classes + 1, device=src_logits.device)
-                padding[-1] = self.num_classes  # Change prediction to no-object class
-                padding = padding.repeat(pad_num - target_labels[i].shape[0], 1)
-
-                target_classes[i] = torch.cat((target_labels[i], padding))
-            target_classes = target_classes.transpose(1, 2)
-
-        # if self.use_mixup and self.training:
-        #     bs, num_queries = src_logits.shape[:2]
-        #     # Flatten the predictions and targets to perform mix-up across batches.
-        #     flat_logits = src_logits.flatten(0, 1)
-        #     flat_targets = target_classes.flatten(0, 1)
-        #     # FIXME: does the padding have an impact on this?
-        #     mixed_logits, mixed_targets = mixup(flat_logits, flat_targets, self.mixup_alpha, self.num_classes + 1)
-
-        #     # Reshape everything to the orginal shape
-        #     mixed_logits = mixed_logits.view(bs, num_queries, -1)
-        #     mixed_targets = mixed_targets.view(bs, num_queries, -1)
-
-        #     loss_ce = F.cross_entropy(mixed_logits.transpose(1, 2), mixed_targets.transpose(1, 2), self.empty_weight)
-        #     losses = {"loss": loss_ce}
-
-        # else:
         loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
         losses = {"loss": loss_ce}
 
         if log and not use_mixup:  # TODO: make this possible with mix up as well.
-            # TODO this should probably be a separate loss, not hacked in this one here
             losses["class_error"] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
 
         return losses

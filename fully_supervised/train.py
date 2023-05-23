@@ -1,11 +1,12 @@
 import configs.fully_supervised as config
 from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData
-from fully_supervised.model import LinearClassifier, ResNetClassifier
+from fully_supervised.model import LinearClassifier, ResNetClassifier, pad_class_logits
 from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
 from modelling.mixup import mixup
+from utils.misc import get_pad_ids
 
 import argparse
 import torch
@@ -153,23 +154,32 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         idx = self.criterion._get_src_permutation_idx(indices)
 
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(batch["targets"], indices)])
-        # target_boxes_o = torch.cat([t["boxes"][J] for t, (_, J) in zip(batch["targets"], indices)])
-        # target_classes_boxes = torch.cat([t["boxes"][J] for t, (_, J) in zip(batch["targets"], indices)])
 
-        target_classes = (
-            torch.ones(src_features.shape[0], dtype=torch.int64, device=src_features.device)
-            * self.criterion.num_classes
+        target_classes = torch.full(
+            batch["boxes"].shape[:2],
+            self.model.num_classes,
+            dtype=torch.int64,
+            device=config.device,
         )
-        # target_boxes = torch.zeros((src_features.shape[0], 4), dtype=torch.int64, device=src_features.device)
-        target_classes[idx[1]] = target_classes_o
-        # target_boxes[idx[1]] = target_boxes_o
+        target_classes[idx] = target_classes_o
+        # Filter out the padded targets
+        mask_ids, _ = get_pad_ids(batch["num_masks"], config.pad_num)
+        target_classes = target_classes.flatten(0, 1)[mask_ids]
 
         # Mix it up!
         mixed_features, mixed_labels = mixup(
-            src_features, target_classes, config.mixup_alpha, self.criterion.num_classes + 1
+            src_features,
+            target_classes,
+            config.mixup_alpha,
+            self.criterion.num_classes + 1,
+            batch["num_masks"],
+            config.pad_num,
         )
 
-        # mixed_targets = {"labels": mixed_labels, "boxes": target_boxes}
+        # Add padding back to the labels
+        mixed_labels = pad_class_logits(
+            mixed_labels, batch["num_masks"], config.num_classes, config.pad_num, config.device, mode="targets"
+        )
 
         return mixed_features, mixed_labels
 

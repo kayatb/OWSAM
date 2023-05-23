@@ -27,8 +27,8 @@ batch_size = 4
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 
-checkpoint_dir = "checkpoints"
-log_dir = "tensorboard_logs"
+checkpoint_dir = f"checkpoints/{num_layers}layers_{hidden_dim}dim_{lr}lr_{dropout}dropout_{mixup_alpha}mixup_alpha_{epochs}epochs_{batch_size}bs"
+log_dir = f"tensorboard_logs/{num_layers}layers_{hidden_dim}dim_{lr}lr_{dropout}dropout_{mixup_alpha}mixup_alpha_{epochs}epochs_{batch_size}bs"
 
 device = "cuda"
 assert device in ("cpu", "cuda")

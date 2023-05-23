@@ -8,6 +8,21 @@ import torch.distributed as dist
 import numpy as np
 
 
+def get_pad_ids(num_masks, pad_num):
+    """Get the indices of the actual masks and of the added padding."""
+    mask_ids = []
+    pad_ids = []
+
+    offset = 0
+    for num in num_masks:
+        mask_ids.extend(range(offset, (offset + num)))
+        offset += num
+        pad_ids.extend(range(offset, offset + (pad_num - num)))
+        offset = offset + (pad_num - num) + 1
+
+    return mask_ids, pad_ids
+
+
 def labels_to_onehot(labels, num_classes):
     """Labels to one-hot encoding."""
     return torch.nn.functional.one_hot(labels, num_classes=num_classes)
