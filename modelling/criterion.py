@@ -2,7 +2,7 @@
 The DETR Loss.
 Copied and adapted from: https://github.com/facebookresearch/detr/blob/main/models/detr.py
 """
-from modelling.mixup import mixup
+# from modelling.mixup import mixup_cross_entropy_loss
 
 import torch
 import torch.nn.functional as F
@@ -91,10 +91,16 @@ class SetCriterion(nn.Module):
                 src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device
             )
             target_classes[idx] = target_classes_o
+            loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
         else:
             target_classes = targets.transpose(1, 2)
+            # src_logits = src_logits.view(2800, 81)
+            loss_ce = F.cross_entropy(
+                src_logits.transpose(1, 2), target_classes, weight=self.empty_weight
+            )  # , self.empty_weight)
+            # loss_ce = mixup_cross_entropy_loss(src_logits, target_classes, self.empty_weight)
 
-        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+        print(loss_ce.item())
         losses = {"loss": loss_ce}
 
         if log and not use_mixup:  # TODO: make this possible with mix up as well.

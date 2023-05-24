@@ -18,7 +18,7 @@ def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device, mode
             padding = torch.ones(num_classes + 1, device=device) * -1000
             padding[-1] = 1000  # Change prediction to no-object class
         elif mode == "targets":
-            padding = torch.ones(num_classes + 1, device=device)
+            padding = torch.zeros(num_classes + 1, device=device)
             padding[-1] = 1
         else:
             raise ValueError(f"Unkown pad mode `{mode}` given. Available are `logits` and `targets`.")

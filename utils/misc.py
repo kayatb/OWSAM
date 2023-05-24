@@ -18,7 +18,7 @@ def get_pad_ids(num_masks, pad_num):
         mask_ids.extend(range(offset, (offset + num)))
         offset += num
         pad_ids.extend(range(offset, offset + (pad_num - num)))
-        offset = offset + (pad_num - num) + 1
+        offset = offset + (pad_num - num)
 
     return mask_ids, pad_ids
 

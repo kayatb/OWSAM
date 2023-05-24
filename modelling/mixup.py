@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import numpy as np
 
 
-def mixup(predictions, targets, alpha, n_classes, num_masks, pad_num):
+def mixup(predictions, targets, alpha, n_classes):
     indices = torch.randperm(predictions.size(0))
     predictions2 = predictions[indices]
     targets2 = targets[indices]
@@ -24,9 +24,9 @@ def mixup(predictions, targets, alpha, n_classes, num_masks, pad_num):
     return predictions, targets
 
 
-def mixup_cross_entropy_loss(input, target, size_average=True):
+def mixup_cross_entropy_loss(input, target, weights, size_average=True):
     input = F.log_softmax(input, dim=1)
-    loss = -torch.sum(input * target)
+    loss = -torch.sum(input * target * weights)
     if size_average:
         return loss / input.size(0)
     else:
