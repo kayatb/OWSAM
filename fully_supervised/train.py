@@ -1,7 +1,7 @@
 import configs.fully_supervised as config
 from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData
 from fully_supervised.model import LinearClassifier, ResNetClassifier
-from fully_supervised.coco_eval import CocoEvaluator
+from eval.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
