@@ -2,7 +2,6 @@
 The DETR Loss.
 Copied and adapted from: https://github.com/facebookresearch/detr/blob/main/models/detr.py
 """
-# from modelling.mixup import mixup_cross_entropy_loss
 
 import torch
 import torch.nn.functional as F
@@ -54,7 +53,7 @@ class SetCriterion(nn.Module):
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
 
-    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, use_mixup=False, mixup_alpha=0.0):
+    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, use_mixup=False, mixup_alpha=0.2):
         """Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -91,16 +90,10 @@ class SetCriterion(nn.Module):
                 src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device
             )
             target_classes[idx] = target_classes_o
-            loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
         else:
             target_classes = targets.transpose(1, 2)
-            # src_logits = src_logits.view(2800, 81)
-            loss_ce = F.cross_entropy(
-                src_logits.transpose(1, 2), target_classes, weight=self.empty_weight
-            )  # , self.empty_weight)
-            # loss_ce = mixup_cross_entropy_loss(src_logits, target_classes, self.empty_weight)
 
-        print(loss_ce.item())
+        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, weight=self.empty_weight)
         losses = {"loss": loss_ce}
 
         if log and not use_mixup:  # TODO: make this possible with mix up as well.
@@ -117,9 +110,6 @@ class SetCriterion(nn.Module):
     def get_loss(self, loss, outputs, targets, indices, **kwargs):
         loss_map = {
             "labels": self.loss_labels,
-            # "cardinality": self.loss_cardinality,
-            # "boxes": self.loss_boxes,
-            # "masks": self.loss_masks,
         }
         assert loss in loss_map, f"do you really want to compute {loss} loss?"
         return loss_map[loss](outputs, targets, indices, **kwargs)
@@ -136,15 +126,8 @@ class SetCriterion(nn.Module):
 
             # Retrieve the matching between the outputs of the last layer and the targets
             indices = self.matcher(outputs_without_aux, targets)
-        else:
+        else:  # Matching was already calculated for mix-up
             indices = None
-
-        # Compute the average number of target boxes accross all nodes, for normalization purposes
-        # num_boxes = sum(len(t["labels"]) for t in targets)
-        # num_boxes = torch.as_tensor([num_boxes], dtype=torch.float)  # , device=next(iter(outputs.values())).device)
-        # if is_dist_avail_and_initialized():
-        #     torch.distributed.all_reduce(num_boxes)
-        # num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
 
         # Compute all the requested losses
         losses = {}
@@ -152,19 +135,19 @@ class SetCriterion(nn.Module):
             losses.update(self.get_loss(loss, outputs, targets, indices, use_mixup=use_mixup, num_masks=num_masks))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
-        if "aux_outputs" in outputs:
-            for i, aux_outputs in enumerate(outputs["aux_outputs"]):
-                indices = self.matcher(aux_outputs, targets)
-                for loss in self.losses:
-                    if loss == "masks":
-                        # Intermediate masks losses are too costly to compute, we ignore them.
-                        continue
-                    kwargs = {}
-                    if loss == "labels":
-                        # Logging is enabled only for the last layer
-                        kwargs = {"log": False}
-                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
-                    l_dict = {k + f"_{i}": v for k, v in l_dict.items()}
-                    losses.update(l_dict)
+        # if "aux_outputs" in outputs:
+        #     for i, aux_outputs in enumerate(outputs["aux_outputs"]):
+        #         indices = self.matcher(aux_outputs, targets)
+        #         for loss in self.losses:
+        #             if loss == "masks":
+        #                 # Intermediate masks losses are too costly to compute, we ignore them.
+        #                 continue
+        #             kwargs = {}
+        #             if loss == "labels":
+        #                 # Logging is enabled only for the last layer
+        #                 kwargs = {"log": False}
+        #             l_dict = self.get_loss(loss, aux_outputs, targets, indices, **kwargs)
+        #             l_dict = {k + f"_{i}": v for k, v in l_dict.items()}
+        #             losses.update(l_dict)
 
         return losses

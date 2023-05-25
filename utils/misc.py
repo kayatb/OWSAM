@@ -8,6 +8,37 @@ import torch.distributed as dist
 import numpy as np
 
 
+def add_padding(input_arr, num_masks, num_classes, pad_num, device, mode="logits"):
+    """Add a batch dim and padding to the class logits or the targets for loss calculation.
+    Logits are padded with extremely low values, except for the background class. Targets are
+    padded with zeroes, except for the background class.
+    input_arr has shape [sum(num_masks), num_classes] and
+    the padded output array has shape [batch size, pad_num, num_classes].
+    """
+    batch_size = len(num_masks)
+
+    input_arr = torch.split(input_arr, num_masks)
+    padded_arr = torch.empty(batch_size, pad_num, num_classes + 1, device=device)
+
+    for i in range(batch_size):  # TODO: can you do this without a for-loop?
+        if mode == "logits":
+            # Pad each image's logits with extremely low values (except no-object class)
+            # to make the shape uniform across images.
+            padding = torch.ones(num_classes + 1, device=device) * -1000
+            padding[-1] = 1000  # Change prediction to background class
+        elif mode == "targets":
+            padding = torch.zeros(num_classes + 1, device=device)
+            padding[-1] = 1  # Change the target to background class
+        else:
+            raise ValueError(f"Unkown pad mode `{mode}` given. Available are `logits` and `targets`.")
+
+        padding = padding.repeat(pad_num - input_arr[i].shape[0], 1)
+
+        padded_arr[i] = torch.cat((input_arr[i], padding))
+
+    return padded_arr
+
+
 def get_pad_ids(num_masks, pad_num):
     """Get the indices of the actual masks and of the added padding."""
     mask_ids = []

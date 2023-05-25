@@ -1,33 +1,8 @@
+from utils.misc import add_padding
+
 import torch
 import torch.nn as nn
 from torchvision.models import resnet18, ResNet18_Weights
-
-
-# TODO: put this in utils and change function name
-def pad_class_logits(class_logits, num_masks, num_classes, pad_num, device, mode="logits"):
-    """Add a batch dim and padding to the class logits for loss calculation."""
-    batch_size = len(num_masks)
-
-    class_logits = torch.split(class_logits, num_masks)
-    padded_class_logits = torch.empty(batch_size, pad_num, num_classes + 1, device=device)
-    # Now batch the class logits to be shape [batch_size x pad_num x num_classes].
-    # Pad each image's logits with extremely low values (except no-object class)
-    # to make the shape uniform across images.
-    for i in range(batch_size):  # TODO: can you do this without a for-loop?
-        if mode == "logits":
-            padding = torch.ones(num_classes + 1, device=device) * -1000
-            padding[-1] = 1000  # Change prediction to no-object class
-        elif mode == "targets":
-            padding = torch.zeros(num_classes + 1, device=device)
-            padding[-1] = 1
-        else:
-            raise ValueError(f"Unkown pad mode `{mode}` given. Available are `logits` and `targets`.")
-
-        padding = padding.repeat(pad_num - class_logits[i].shape[0], 1)
-
-        padded_class_logits[i] = torch.cat((class_logits[i], padding))
-
-    return padded_class_logits
 
 
 class LinearClassifier(nn.Module):
@@ -57,7 +32,7 @@ class LinearClassifier(nn.Module):
         # x = batch["crop_features"].float()
         class_logits = self.classifier(x)
 
-        padded_class_logits = pad_class_logits(
+        padded_class_logits = add_padding(
             class_logits, batch["num_masks"], self.num_classes, self.pad_num, batch["boxes"].device
         )
 
@@ -83,7 +58,7 @@ class ResNetClassifier(nn.Module):
     def forward(self, batch):
         class_logits = self.resnet(batch["crops"])
 
-        padded_class_logits = pad_class_logits(
+        padded_class_logits = add_padding(
             class_logits, batch["num_masks"], self.num_classes, self.pad_num, batch["boxes"].device
         )
 
@@ -95,7 +70,7 @@ class ResNetClassifier(nn.Module):
 
 
 if __name__ == "__main__":
-    from data.datasets.mask_feature_dataset import MaskData, CropMaskData
+    from data.datasets.mask_feature_dataset import CropMaskData
 
     device = "cpu"
 

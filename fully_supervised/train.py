@@ -1,12 +1,12 @@
 import configs.fully_supervised as config
 from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData
-from fully_supervised.model import LinearClassifier, ResNetClassifier, pad_class_logits
+from fully_supervised.model import LinearClassifier, ResNetClassifier
 from fully_supervised.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
 from modelling.mixup import mixup
-from utils.misc import get_pad_ids
+from utils.misc import get_pad_ids, add_padding
 
 import argparse
 import torch
@@ -167,26 +167,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         mask_ids, _ = get_pad_ids(batch["num_masks"], config.pad_num)
         target_classes = target_classes.flatten(0, 1)[mask_ids]
 
-        # from utils.misc import labels_to_onehot
-
-        # mixed_labels = torch.argmax(mixed_labels, dim=-1)
-        # assert torch.equal(target_classes, mixed_labels), "Not equal after back and forth one hot encoding"
-        # print("SUCCESS")
-
-        # USE FOR NOT ONE-HOT
-        # mixed_labels = target_classes.view(batch["boxes"].shape[0], batch["boxes"].shape[1])
-
-        # USE FOR ONE-HOT
-
-        # mixed_labels = labels_to_onehot(target_classes, num_classes=self.criterion.num_classes + 1).to(
-        #     dtype=torch.float
-        # )
-
-        # mixed_labels = mixed_labels2.view(batch["boxes"].shape[0], batch["boxes"].shape[1], -1)
-        # mixed_labels = torch.argmax(mixed_labels, dim=-1)
-
-        # mixed_labels = labels_to_onehot(target_classes, self.criterion.num_classes + 1)
-
         # Mix it up!
         mixed_features, mixed_labels = mixup(
             src_features,
@@ -195,14 +175,10 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             self.criterion.num_classes + 1,
         )
 
-        # mixed_labels = mixed_labels.view(batch["boxes"].shape[0], batch["boxes"].shape[1], -1).to(dtype=torch.float)
         # Add padding back to the labels
-        mixed_labels = pad_class_logits(
+        mixed_labels = add_padding(
             mixed_labels, batch["num_masks"], config.num_classes, config.pad_num, config.device, mode="targets"
         )
-        # mixed_labels = pad_class_logits(
-        #     mixed_labels, [700, 700, 700, 700], config.num_classes, config.pad_num, config.device, mode="targets"
-        # )
 
         return mixed_features, mixed_labels
 

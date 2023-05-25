@@ -5,7 +5,8 @@ Copied and adapted from: https://github.com/hysts/pytorch_mixup/blob/master/util
 from utils.misc import labels_to_onehot
 
 import torch
-import torch.nn.functional as F
+
+# import torch.nn.functional as F
 import numpy as np
 
 
@@ -24,18 +25,18 @@ def mixup(predictions, targets, alpha, n_classes):
     return predictions, targets
 
 
-def mixup_cross_entropy_loss(input, target, weights, size_average=True):
-    input = F.log_softmax(input, dim=1)
-    loss = -torch.sum(input * target * weights)
-    if size_average:
-        return loss / input.size(0)
-    else:
-        return loss
+# def mixup_cross_entropy_loss(input, target, weights, size_average=True):
+#     input = F.log_softmax(input, dim=1)
+#     loss = -torch.sum(input * target * weights)
+#     if size_average:
+#         return loss / input.size(0)
+#     else:
+#         return loss
 
 
-class MixUpCrossEntropyLoss(object):
-    def __init__(self, size_average=True):
-        self.size_average = size_average
+# class MixUpCrossEntropyLoss(object):
+#     def __init__(self, size_average=True):
+#         self.size_average = size_average
 
-    def __call__(self, input, target):
-        return mixup_cross_entropy_loss(input, target, self.size_average)
+#     def __call__(self, input, target):
+#         return mixup_cross_entropy_loss(input, target, self.size_average)
