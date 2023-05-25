@@ -2,6 +2,7 @@ from eval.coco_eval import create_common_coco_eval
 
 from lvis import LVIS, LVISEval, LVISResults
 import numpy as np
+from collections import OrderedDict, defaultdict
 
 
 class LvisEvaluator:
@@ -18,9 +19,16 @@ class LvisEvaluator:
             self.preds[iou_type] = []
 
     def update(self, predictions):
-        for iou_type in self.iou_types:
-            preds = self.prepare(predictions, iou_type)
-            self.preds[iou_type].extend(preds)
+        # for iou_type in self.iou_types:
+        #     preds = self.prepare(predictions, iou_type)
+        #     self.preds[iou_type].extend(preds)
+        cur_results = self.prepare(predictions, iou_type="bbox")
+        by_id = defaultdict(list)
+        for ann in cur_results:
+            by_id[ann["image_id"]].append(ann)
+
+        for id_anns in by_id.values():
+            self.preds["bbox"].extend(sorted(id_anns, key=lambda x: x["score"], reverse=True)[:300])
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":

@@ -57,8 +57,10 @@ class LVISResults(LVIS):
             max_dets (int):  max number of detections per image. The official
             value of max_dets for LVIS is 300.
         """
-        super(LVISResults, self).__init__()
-        assert isinstance(lvis_gt, LVIS)
+        # super(LVISResults, self).__init__(lvis_gt)
+        self.lvis_gt = lvis_gt
+        self.dataset = lvis_gt.dataset
+        # assert isinstance(lvis_gt, LVIS)
         # if isinstance(lvis_gt, LVIS):
         #     self.dataset = copy.deepcopy(lvis_gt.dataset)
         # elif isinstance(lvis_gt, str):
@@ -66,7 +68,7 @@ class LVISResults(LVIS):
         # else:
         #     raise TypeError("Unsupported type {} of lvis_gt.".format(lvis_gt))
 
-        self.dataset["images"] = [img for img in lvis_gt.dataset["images"]]
+        self.dataset["images"] = [img for img in self.dataset["images"]]
 
         if isinstance(results, str):
             result_anns = self._load_json(results)
@@ -79,7 +81,7 @@ class LVISResults(LVIS):
             result_anns = self.limit_dets_per_image(result_anns, max_dets)
 
         if len(result_anns) > 0 and "bbox" in result_anns[0]:
-            self.dataset["categories"] = copy.deepcopy(lvis_gt.dataset["categories"])
+            # self.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
             for id, ann in enumerate(result_anns):
                 x1, y1, w, h = ann["bbox"]
                 x2 = x1 + w
@@ -92,7 +94,7 @@ class LVISResults(LVIS):
                 ann["id"] = id + 1
 
         elif len(result_anns) > 0 and "segmentation" in result_anns[0]:
-            self.dataset["categories"] = copy.deepcopy(lvis_gt.dataset["categories"])
+            # self.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
             for id, ann in enumerate(result_anns):
                 # Only support compressed RLE format as segmentation results
                 ann["area"] = mask_util.area(ann["segmentation"])
@@ -131,6 +133,11 @@ class LVISResults(LVIS):
         return list(filter(lambda ann: ann["score"] > score_thrs, anns))
 
     def _create_index(self):
+        # self.img_ann_map = self.lvis_gt.img_ann_map
+        # self.cat_img_map = self.lvis_gt.cat_img_map
+        # self.anns = self.lvis_gt.anns
+        # self.cats = self.lvis_gt.cats
+        # self.imgs = self.lvis_gt.imgs
         self.img_ann_map = defaultdict(list)
         self.cat_img_map = defaultdict(list)
 
@@ -223,7 +230,6 @@ class LVISEval:
         # for categories about which we don't have gt information about their
         # presence or absence in an image.
         img_data = self.lvis_gt.load_imgs(ids=self.params.img_ids)
-        print(img_data)
         # per image map of categories not present in image
         img_nl = {d["id"]: d["neg_category_ids"] for d in img_data}
         # per image list of categories present in image
@@ -472,8 +478,8 @@ class LVISEval:
                 tps = np.logical_and(dt_m, np.logical_not(dt_ig))
                 fps = np.logical_and(np.logical_not(dt_m), np.logical_not(dt_ig))
 
-                tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float)
-                fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float)
+                tp_sum = np.cumsum(tps, axis=1).astype(dtype=float)
+                fp_sum = np.cumsum(fps, axis=1).astype(dtype=float)
 
                 dt_pointers[cat_idx][area_idx] = {
                     "dt_ids": dt_ids,
@@ -676,7 +682,7 @@ class LvisEvaluator(object):
     def summarize(self):
         for iou_type, lvis_eval in self.coco_eval.items():
             print("IoU metric: {}".format(iou_type))
-            lvis_eval.summarize()
+            lvis_eval.run()
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":

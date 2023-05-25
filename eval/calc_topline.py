@@ -10,14 +10,14 @@ from data.datasets.mask_feature_dataset import MaskData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
 from eval.coco_eval import CocoEvaluator
-from eval.lvis_eval2 import LvisEvaluator
+from eval.lvis_eval import LvisEvaluator
 
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
-dataset = MaskData(config.masks_dir, config.ann_train, config.device, pad_num=config.pad_num)
+dataset = MaskData(config.masks_dir, config.ann_val, config.device, pad_num=config.pad_num)
 dataloader = DataLoader(
     dataset,
     batch_size=1,  # Has to be 1 to avoid padding.
@@ -29,8 +29,8 @@ dataloader = DataLoader(
     prefetch_factor=3,
 )
 
-# evaluator = CocoEvaluator(config.ann_train, ["bbox"])
-evaluator = LvisEvaluator(config.ann_train, ["bbox"])
+# evaluator = CocoEvaluator(config.ann_val, ["bbox"])
+evaluator = LvisEvaluator(config.ann_val, ["bbox"])
 
 for i, batch in enumerate(tqdm(dataloader)):
     assert (
