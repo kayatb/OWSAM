@@ -10,7 +10,7 @@ from data.datasets.mask_feature_dataset import MaskData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
 from eval.coco_eval import CocoEvaluator
-from eval.lvis_eval import LvisEvaluator
+from eval.lvis_eval2 import LvisEvaluator
 
 import torch
 from torch.utils.data import DataLoader
@@ -32,7 +32,7 @@ dataloader = DataLoader(
 # evaluator = CocoEvaluator(config.ann_train, ["bbox"])
 evaluator = LvisEvaluator(config.ann_train, ["bbox"])
 
-for batch in tqdm(dataloader):
+for i, batch in enumerate(tqdm(dataloader)):
     assert (
         batch["boxes"].shape[0] == 1
     ), f"Batch size has to be 1 to avoid padding. Current batch size is {batch['boxes'].shape[0]}."
@@ -55,7 +55,7 @@ for batch in tqdm(dataloader):
 
     # Take the predicted box with the highest IoU and assign that the corresponding GT label
     best_idx = []
-    for i in range(len(gt_boxes)):
+    for i in range(min(len(gt_boxes), len(pred_boxes))):
         ious_ind = torch.argsort(ious[:, i], descending=True)
         j = 0
         # Ensure no duplicate assignments.
@@ -77,7 +77,8 @@ for batch in tqdm(dataloader):
     }
 
     evaluator.update(results)
+    # break
 
-evaluator.synchronize_between_processes()
-evaluator.accumulate()
+# evaluator.synchronize_between_processes()
+# evaluator.accumulate()
 evaluator.summarize()

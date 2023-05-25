@@ -57,14 +57,14 @@ class LVISResults(LVIS):
             max_dets (int):  max number of detections per image. The official
             value of max_dets for LVIS is 300.
         """
-        # super(LVISResults, self).__init__(lvis_gt)
-        # assert isinstance(lvis_gt, LVIS)
-        if isinstance(lvis_gt, LVIS):
-            self.dataset = copy.deepcopy(lvis_gt.dataset)
-        elif isinstance(lvis_gt, str):
-            self.dataset = self._load_json(lvis_gt)
-        else:
-            raise TypeError("Unsupported type {} of lvis_gt.".format(lvis_gt))
+        super(LVISResults, self).__init__()
+        assert isinstance(lvis_gt, LVIS)
+        # if isinstance(lvis_gt, LVIS):
+        #     self.dataset = copy.deepcopy(lvis_gt.dataset)
+        # elif isinstance(lvis_gt, str):
+        #     self.dataset = self._load_json(lvis_gt)
+        # else:
+        #     raise TypeError("Unsupported type {} of lvis_gt.".format(lvis_gt))
 
         self.dataset["images"] = [img for img in lvis_gt.dataset["images"]]
 
@@ -640,7 +640,7 @@ class LvisEvaluator(object):
         self.iou_types = iou_types
         self.coco_eval = {}
         for iou_type in iou_types:
-            self.coco_eval[iou_type] = LVISEval(lvis_gt, iou_type=iou_type)
+            self.coco_eval[iou_type] = LVISEval(self.lvis_gt, iou_type=iou_type)
 
         self.img_ids = []
         self.eval_imgs = {k: [] for k in iou_types}
