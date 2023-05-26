@@ -1,7 +1,7 @@
 """
 Copied and adapted from: https://github.com/ashkamath/mdetr/blob/main/datasets/lvis_eval.py
 """
-import copy
+# import copy
 import datetime
 from collections import OrderedDict, defaultdict
 
@@ -57,18 +57,9 @@ class LVISResults(LVIS):
             max_dets (int):  max number of detections per image. The official
             value of max_dets for LVIS is 300.
         """
-        # super(LVISResults, self).__init__(lvis_gt)
+        assert isinstance(lvis_gt, LVIS)
         self.lvis_gt = lvis_gt
         self.dataset = lvis_gt.dataset
-        # assert isinstance(lvis_gt, LVIS)
-        # if isinstance(lvis_gt, LVIS):
-        #     self.dataset = copy.deepcopy(lvis_gt.dataset)
-        # elif isinstance(lvis_gt, str):
-        #     self.dataset = self._load_json(lvis_gt)
-        # else:
-        #     raise TypeError("Unsupported type {} of lvis_gt.".format(lvis_gt))
-
-        self.dataset["images"] = [img for img in self.dataset["images"]]
 
         if isinstance(results, str):
             result_anns = self._load_json(results)
@@ -81,7 +72,6 @@ class LVISResults(LVIS):
             result_anns = self.limit_dets_per_image(result_anns, max_dets)
 
         if len(result_anns) > 0 and "bbox" in result_anns[0]:
-            # self.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
             for id, ann in enumerate(result_anns):
                 x1, y1, w, h = ann["bbox"]
                 x2 = x1 + w
@@ -94,7 +84,6 @@ class LVISResults(LVIS):
                 ann["id"] = id + 1
 
         elif len(result_anns) > 0 and "segmentation" in result_anns[0]:
-            # self.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
             for id, ann in enumerate(result_anns):
                 # Only support compressed RLE format as segmentation results
                 ann["area"] = mask_util.area(ann["segmentation"])
@@ -106,13 +95,6 @@ class LVISResults(LVIS):
 
         self.dataset["annotations"] = result_anns
         self._create_index()
-
-        # #FIXME: disabling this check for now
-        # img_ids_in_result = [ann["image_id"] for ann in result_anns]
-
-        # assert set(img_ids_in_result) == (
-        #     set(img_ids_in_result) & set(self.get_img_ids())
-        # ), "Results do not correspond to current LVIS set."
 
     def limit_dets_per_image(self, anns, max_dets):
         img_ann = defaultdict(list)
@@ -133,11 +115,6 @@ class LVISResults(LVIS):
         return list(filter(lambda ann: ann["score"] > score_thrs, anns))
 
     def _create_index(self):
-        # self.img_ann_map = self.lvis_gt.img_ann_map
-        # self.cat_img_map = self.lvis_gt.cat_img_map
-        # self.anns = self.lvis_gt.anns
-        # self.cats = self.lvis_gt.cats
-        # self.imgs = self.lvis_gt.imgs
         self.img_ann_map = defaultdict(list)
         self.cat_img_map = defaultdict(list)
 
@@ -640,7 +617,6 @@ class LVISEval:
 class LvisEvaluator(object):
     def __init__(self, lvis_gt, iou_types):
         assert isinstance(iou_types, (list, tuple))
-        # lvis_gt = copy.deepcopy(lvis_gt)
         self.lvis_gt = LVIS(lvis_gt)
 
         self.iou_types = iou_types
@@ -737,39 +713,39 @@ class LvisEvaluator(object):
 
         return results
 
-    # def prepare_for_lvis_segmentation(self, predictions):
-    #     lvis_results = []
-    #     for original_id, prediction in predictions.items():
-    #         if len(prediction) == 0:
-    #             continue
+    def prepare_for_lvis_segmentation(self, predictions):
+        lvis_results = []
+        for original_id, prediction in predictions.items():
+            if len(prediction) == 0:
+                continue
 
-    #         scores = prediction["scores"]
-    #         labels = prediction["labels"]
-    #         masks = prediction["masks"]
+            scores = prediction["scores"]
+            labels = prediction["labels"]
+            masks = prediction["masks"]
 
-    #         masks = masks > 0.5
+            masks = masks > 0.5
 
-    #         scores = prediction["scores"].tolist()
-    #         labels = prediction["labels"].tolist()
+            scores = prediction["scores"].tolist()
+            labels = prediction["labels"].tolist()
 
-    #         rles = [
-    #             mask_util.encode(np.array(mask[0, :, :, np.newaxis], dtype=np.uint8, order="F"))[0] for mask in masks
-    #         ]
-    #         for rle in rles:
-    #             rle["counts"] = rle["counts"].decode("utf-8")
+            rles = [
+                mask_util.encode(np.array(mask[0, :, :, np.newaxis], dtype=np.uint8, order="F"))[0] for mask in masks
+            ]
+            for rle in rles:
+                rle["counts"] = rle["counts"].decode("utf-8")
 
-    #         lvis_results.extend(
-    #             [
-    #                 {
-    #                     "image_id": original_id,
-    #                     "category_id": labels[k],
-    #                     "segmentation": rle,
-    #                     "score": scores[k],
-    #                 }
-    #                 for k, rle in enumerate(rles)
-    #             ]
-    #         )
-    #     return lvis_results
+            lvis_results.extend(
+                [
+                    {
+                        "image_id": original_id,
+                        "category_id": labels[k],
+                        "segmentation": rle,
+                        "score": scores[k],
+                    }
+                    for k, rle in enumerate(rles)
+                ]
+            )
+        return lvis_results
 
 
 def create_common_lvis_eval(lvis_eval, img_ids, eval_imgs):
