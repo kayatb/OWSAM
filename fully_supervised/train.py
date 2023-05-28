@@ -1,4 +1,3 @@
-import configs.fully_supervised as config
 from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData, ImageMaskData
 from fully_supervised.model import LinearClassifier, ResNetClassifier, SAMRPN
 from eval.coco_eval import CocoEvaluator
@@ -28,14 +27,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
         # self.evaluator.coco_eval["bbox"].params.useCats = 0  # For calculating object vs no-object mAP
 
-        # Log the hyperparameters
-        self.log("hp/num_layers", config.num_layers)
-        self.log("hp/hidden_dim", config.hidden_dim)
-        self.log("hp/batch_size", config.batch_size)
-        self.log("hp/lr", config.lr)
-
     def training_step(self, batch, batch_idx):
-        if config.use_mixup and self.training:
+        if config.model_type == "mlp" and config.use_mixup and self.training:
             mixed_features, mixed_targets = self.do_mixup(batch)
             batch["crop_features"] = mixed_features
             outputs = self.model(batch)
@@ -108,7 +101,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        if config.model_type == "linear":
+        if config.model_type == "mlp":
             model = LinearClassifier(
                 config.num_layers, config.hidden_dim, config.num_classes, config.dropout, pad_num=config.pad_num
             )
@@ -197,6 +190,13 @@ def parse_args():
         "--log-dir",
         help="Directory to store (Tensorboard) logging.",
     )
+    parser.add_argument(
+        "-m",
+        "--model-type",
+        required=True,
+        choices=["mlp", "resnet", "rpn"],
+        help="Which model to train (i.e. which config to use).",
+    )
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
 
     args = parser.parse_args()
@@ -204,7 +204,7 @@ def parse_args():
 
 
 def load_data():
-    if config.model_type == "linear":
+    if config.model_type == "mlp":
         dataset_train = CropFeatureMaskData(
             config.masks_dir, config.ann_train, config.crop_feat_dir, config.device, pad_num=config.pad_num
         )
@@ -261,6 +261,15 @@ def load_data():
 
 if __name__ == "__main__":
     args = parse_args()
+
+    if args.model_type == "mlp":
+        import configs.fully_supervised.mlp as config
+    elif args.model_type == "resnet":
+        import configs.fully_supervised.resnet_crops as config
+    elif args.model_type == "rpn":
+        import configs.fully_supervised.rpn as config
+    else:
+        raise ValueError(f"Unkown model_type `{args.model_type}` given as cmd argument.")
 
     if args.checkpoint_dir:
         config.checkpoint_dir = args.checkpoint_dir

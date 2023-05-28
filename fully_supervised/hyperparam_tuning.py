@@ -1,4 +1,4 @@
-import configs.fully_supervised as config
+import configs.fully_supervised.mlp as config
 from fully_supervised.train import LitFullySupervisedClassifier, load_data
 
 import lightning.pytorch as pl

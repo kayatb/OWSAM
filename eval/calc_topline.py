@@ -5,7 +5,7 @@ then assign the matched mask the ground truth labels, i.e. we assume a perfect
 classifier. Now calculate the mAP with these predictions.
 """
 
-import configs.fully_supervised as config
+import configs.fully_supervised.main as config
 from data.datasets.mask_feature_dataset import MaskData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
