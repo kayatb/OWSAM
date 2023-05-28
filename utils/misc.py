@@ -112,6 +112,23 @@ def box_xyxy_to_xywh(x):
     return torch.stack(b, dim=-1)
 
 
+def resize_bboxes(boxes, orig_img_size, target_size):
+    """Resize the bounding box with the same scale as the image is resized
+    from orig_img_size (W x H) to (target_size x target_size).
+    Boxes can be either xywh or xyxy format."""
+    x, y, w, h = boxes.unbind(-1)
+    h_scale = target_size / orig_img_size[1]
+    w_scale = target_size / orig_img_size[0]
+
+    x = torch.round(x * w_scale)
+    y = torch.round(y * h_scale)
+    w = torch.round(w * w_scale)
+    h = torch.round(h * h_scale)
+
+    resized_boxes = [x, y, w, h]
+    return torch.stack(resized_boxes, dim=-1)
+
+
 # ===== Copy-paste from DETR =====
 # https://github.com/facebookresearch/detr/blob/main/util/misc.py
 

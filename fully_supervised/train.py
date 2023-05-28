@@ -1,6 +1,6 @@
 import configs.fully_supervised as config
-from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData
-from fully_supervised.model import LinearClassifier, ResNetClassifier
+from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData, ImageMaskData
+from fully_supervised.model import LinearClassifier, ResNetClassifier, SAMRPN
 from eval.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
@@ -114,8 +114,10 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             )
         elif config.model_type == "resnet":
             model = ResNetClassifier(config.num_classes, config.pad_num)
+        elif config.model_type == "rpn":
+            model = SAMRPN(config.num_classes, config.feature_extractor_ckpt, pad_num=config.pad_num)
         else:
-            raise ValueError(f"Unknown model type `{type}` given. Available: `linear` and `resnet`.")
+            raise ValueError(f"Unknown model type `{type}` given.")
         model.to(device)
 
         return model
@@ -220,6 +222,18 @@ def load_data():
         )
         collate_fn = CropMaskData.collate_fn
 
+    elif config.model_type == "rpn":
+        dataset_train = ImageMaskData(
+            config.masks_dir, config.ann_train, config.img_train, config.device, train=True, pad_num=config.pad_num
+        )
+        dataset_val = ImageMaskData(
+            config.masks_dir, config.ann_val, config.img_val, config.device, train=False, pad_num=config.pad_num
+        )
+        collate_fn = ImageMaskData.collate_fn
+
+    else:
+        raise ValueError(f"Unknown model_type `{config.model_type}` given.")
+
     dataloader_train = DataLoader(
         dataset_train,
         batch_size=config.batch_size,
@@ -271,6 +285,8 @@ if __name__ == "__main__":
     )
     checkpoint_callback = ModelCheckpoint(dirpath=config.checkpoint_dir, every_n_epochs=config.save_every)
 
+    # TODO: could set precision=16 for mixed precision training, as done by RNCDL.
+    # https://lightning.ai/docs/pytorch/1.5.7/advanced/mixed_precision.html
     trainer = pl.Trainer(
         # fast_dev_run=3,
         # limit_train_batches=0.5,  # FIXME: remove this for actual training!

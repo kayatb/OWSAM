@@ -1,7 +1,7 @@
-"""Config for the training of the fully-supervised classification model."""
+"""Config for the training of the fully-supervised classification models."""
 
-model_type = "linear"
-assert model_type in ("linear", "resnet")
+model_type = "rpn"
+assert model_type in ("linear", "resnet", "rpn")
 
 num_layers = 5
 hidden_dim = 2048
@@ -12,17 +12,19 @@ weight_decay = None
 clip = None  # Gradient clipping
 dropout = 0.1
 
-use_mixup = True
+use_mixup = False
 mixup_alpha = 0.2
 
-# ann_train = "../datasets/coco/annotations/instances_train2017.json"
-ann_train = "../datasets/lvis/lvis_v1_train.json"
-# ann_val = "../datasets/coco/annotations/instances_val2017.json"
-ann_val = "../datasets/lvis/lvis_v1_val.json"
+ann_train = "../datasets/coco/annotations/instances_train2017.json"
+# ann_train = "../datasets/lvis/lvis_v1_train.json"
+ann_val = "../datasets/coco/annotations/instances_val2017.json"
+# ann_val = "../datasets/lvis/lvis_v1_val.json"
 masks_dir = "mask_features/all"
 img_train = "../datasets/coco/train2017"
 img_val = "../datasets/coco/val2017"
 crop_feat_dir = "dino_features/all"
+
+feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 num_classes = 80
 batch_size = 4

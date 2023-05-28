@@ -1,4 +1,4 @@
-from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy
+from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy, resize_bboxes
 
 import torch
 import torchvision.transforms as T
@@ -159,6 +159,56 @@ class CropFeatureMaskData(MaskData):
         return batch
 
 
+class ImageMaskData(MaskData):
+    def __init__(self, mask_dir, ann_file, img_dir, device, train=False, pad_num=700):
+        super().__init__(mask_dir, ann_file, device, pad_num)
+
+        self.img_dir = img_dir
+        self.train = train  # Whether this is the train set or not.
+
+    def __getitem__(self, idx):
+        data = super().__getitem__(idx)
+
+        # COCO image files have filename img_id prepended with 0's until length is 12.
+        img_file = f"{str(data['img_id']).rjust(12, '0')}.jpg"
+        with Image.open(os.path.join(self.img_dir, img_file)) as img:
+            img = img.convert("RGB")
+
+        converted_boxes = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
+        data["resized_boxes"] = resize_bboxes(converted_boxes, img.size, 448)
+
+        data["img"] = self.preprocess(img, self.train)
+        data["img_size"] = (data["img"].shape[1], data["img"].shape[2])  # H x W
+
+        return data
+
+    def preprocess(self, img, train):
+        # TODO: move transform declaration to __init__
+        # TODO: add augmentations if train
+        # TODO: resize images
+        transform = T.Compose(
+            [
+                T.Resize((448, 448)),
+                # T.CenterCrop(self.center_crop),
+                T.ToTensor(),
+                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
+
+        img = transform(img)[:3]
+
+        return img
+
+    @staticmethod
+    def collate_fn(data):
+        batch = MaskData.collate_fn(data)
+        batch["images"] = torch.stack([d["img"] for d in data])
+        batch["img_sizes"] = [d["img_size"] for d in data]
+        batch["resized_boxes"] = [d["resized_boxes"] for d in data]  # Format expected by RoI pooler.
+
+        return batch
+
+
 class CropMaskData(MaskData):
     def __init__(self, box_dir, ann_file, img_dir, device, pad_num=700, resize=256, center_crop=224):
         super().__init__(box_dir, ann_file, device, pad_num)
@@ -238,22 +288,35 @@ if __name__ == "__main__":
     #         print(crop.max())
     #     break
 
-    dataset = CropFeatureMaskData(
+    # dataset = CropFeatureMaskData(
+    #     "mask_features/all",
+    #     # "../datasets/coco/annotations/instances_val2017.json",
+    #     "../datasets/lvis/lvis_v1_train.json",
+    #     "dino_features/all",
+    #     "cpu",
+    #     # lvis_ann_file="../datasets/lvis/lvis_v1_val.json",
+    # )
+
+    # # print(dataset[0]["lvis_targets"])
+
+    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropFeatureMaskData.collate_fn)
+    # for batch in tqdm(dataloader):
+    #     # print(batch.keys())
+    #     # print(batch["crop_features"].shape)
+    #     # break
+    #     # print(batch["targets"])
+    #     # break
+    #     continue
+
+    dataset = ImageMaskData(
         "mask_features/all",
-        # "../datasets/coco/annotations/instances_val2017.json",
-        "../datasets/lvis/lvis_v1_train.json",
-        "dino_features/all",
+        "../datasets/coco/annotations/instances_val2017.json",
+        "../datasets/coco/val2017",
         "cpu",
-        # lvis_ann_file="../datasets/lvis/lvis_v1_val.json",
     )
-
-    # print(dataset[0]["lvis_targets"])
-
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropFeatureMaskData.collate_fn)
-    for batch in tqdm(dataloader):
-        # print(batch.keys())
-        # print(batch["crop_features"].shape)
-        # break
-        # print(batch["targets"])
-        # break
-        continue
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=ImageMaskData.collate_fn)
+    for batch in dataloader:
+        print(batch["resized_boxes"][0][0])
+        print(batch["boxes"][0][0])
+        break
+    # print(torch.min(dataset[0]["img"]))
