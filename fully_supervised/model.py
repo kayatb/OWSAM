@@ -93,7 +93,6 @@ class SAMRPN(nn.Module):
         self.load_roi_heads(self.num_classes + 1)
 
     def load_resnet50_fpn_with_moco(self, checkpoint_path, trainable_backbone_layers):
-        # TODO: change last resnet block stride from 2 to 1
         moco_checkpoint = torch.load(checkpoint_path)
 
         # Rename MoCo pre-trained keys (taken from official MoCo repo):
@@ -107,8 +106,12 @@ class SAMRPN(nn.Module):
             # Delete renamed or unused k.
             del state_dict[k]
 
-        # Load the weights into ResNet-50
         backbone = resnet50(weights=None)
+        # Change the last ResNet block strides from (2, 2) to (1, 1)
+        # to increase the output feature map from 14x14 to 28x28.
+        backbone.layer4[0].downsample[0] = nn.Conv2d(1024, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+        backbone.layer4[0].conv2 = nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+        # Load the weights into ResNet-50
         backbone.load_state_dict(state_dict, strict=False)
 
         # Turn it into an FPN feature extractor.

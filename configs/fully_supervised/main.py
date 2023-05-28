@@ -15,7 +15,7 @@ pad_num = 700  # Max number of detected masks in COCO is 666.
 use_mixup = False
 mixup_alpha = None
 
-device = "cpu"
+device = "cuda"
 assert device in ("cpu", "cuda")
 num_devices = 1
 seed = 29
