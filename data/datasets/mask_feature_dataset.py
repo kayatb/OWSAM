@@ -1,11 +1,14 @@
-from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy, resize_bboxes
+from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy
 
 import torch
 import torchvision.transforms as T
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 import os
 from pycocotools.coco import COCO
 from lvis import LVIS
 from PIL import Image
+import numpy as np
 
 
 class MaskData(torch.utils.data.Dataset):
@@ -166,6 +169,29 @@ class ImageMaskData(MaskData):
         self.img_dir = img_dir
         self.train = train  # Whether this is the train set or not.
 
+        if train:
+            self.transform = A.Compose(
+                [
+                    # A.Resize(448, 448),
+                    A.RandomSizedBBoxSafeCrop(448, 448, erosion_rate=0.2, p=1.0),
+                    A.HorizontalFlip(p=0.5),
+                    A.VerticalFlip(p=0.5),
+                    # A.ColorJitter(p=0.25),
+                    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                    ToTensorV2(),
+                ],
+                bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
+            )
+        else:
+            self.transform = A.Compose(
+                [
+                    A.Resize(448, 448),
+                    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                    ToTensorV2(),
+                ],
+                bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
+            )
+
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
 
@@ -175,36 +201,22 @@ class ImageMaskData(MaskData):
             img = img.convert("RGB")
 
         converted_boxes = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
-        data["resized_boxes"] = resize_bboxes(converted_boxes, img.size, 448)
 
-        data["img"] = self.preprocess(img, self.train)
+        transformed = self.transform(image=np.array(img), bboxes=converted_boxes)
+        data["img"] = transformed["image"]
+        data["resized_boxes"] = transformed["bboxes"]
         data["img_size"] = (data["img"].shape[1], data["img"].shape[2])  # H x W
 
         return data
-
-    def preprocess(self, img, train):
-        # TODO: move transform declaration to __init__
-        # TODO: add augmentations if train
-        # TODO: resize images
-        transform = T.Compose(
-            [
-                T.Resize((448, 448)),
-                # T.CenterCrop(self.center_crop),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ]
-        )
-
-        img = transform(img)[:3]
-
-        return img
 
     @staticmethod
     def collate_fn(data):
         batch = MaskData.collate_fn(data)
         batch["images"] = torch.stack([d["img"] for d in data])
         batch["img_sizes"] = [d["img_size"] for d in data]
-        batch["resized_boxes"] = [d["resized_boxes"] for d in data]  # Format expected by RoI pooler.
+        batch["resized_boxes"] = [
+            torch.tensor(d["resized_boxes"], dtype=torch.float) for d in data
+        ]  # Format expected by RoI pooler.
 
         return batch
 
@@ -308,15 +320,49 @@ if __name__ == "__main__":
     #     # break
     #     continue
 
+    import matplotlib.pyplot as plt
+    import cv2
+
+    # torch.manual_seed(0)
+
+    BOX_COLOR = (255, 0, 0)  # Red
+    TEXT_COLOR = (255, 255, 255)  # White
+
+    def visualize_bbox(img, bbox, color=BOX_COLOR, thickness=2):
+        """Visualizes a single bounding box on the image"""
+        x_min, y_min, x_max, y_max = bbox
+        x_min, x_max, y_min, y_max = int(x_min), int(x_max), int(y_min), int(y_max)
+
+        cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color=color, thickness=thickness)
+
+        cv2.rectangle(img, (x_min, y_min), (x_min, y_min), BOX_COLOR, -1)
+
+        return img
+
+    def visualize(image, bboxes):
+        image = image.permute(1, 2, 0).numpy()
+        img = image.copy()
+        for bbox in bboxes:
+            img = visualize_bbox(img, bbox)
+        plt.figure(figsize=(12, 12))
+        plt.axis("off")
+        plt.imshow(img)
+        plt.show()
+
     dataset = ImageMaskData(
         "mask_features/all",
         "../datasets/coco/annotations/instances_val2017.json",
         "../datasets/coco/val2017",
         "cpu",
+        train=True,
     )
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=ImageMaskData.collate_fn)
-    for batch in dataloader:
-        print(batch["resized_boxes"][0][0])
-        print(batch["boxes"][0][0])
-        break
+
+    data = dataset[0]
+    visualize(data["img"], data["resized_boxes"][:3])
+
+    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=ImageMaskData.collate_fn)
+    # for batch in dataloader:
+    #     # print(batch["resized_boxes"][0][0])
+    #     # print(batch["boxes"][0][0])
+    #     break
     # print(torch.min(dataset[0]["img"]))

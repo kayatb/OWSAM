@@ -165,6 +165,7 @@ if __name__ == "__main__":
         "../datasets/coco/annotations/instances_val2017.json",
         "../datasets/coco/val2017",
         "cpu",
+        train=True,
     )
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageMaskData.collate_fn)
 
