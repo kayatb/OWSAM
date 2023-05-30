@@ -213,8 +213,7 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--model-type",
-        # required=True,
-        default="rpn",
+        required=True,
         choices=["mlp", "resnet", "rpn"],
         help="Which model to train (i.e. which config to use).",
     )
