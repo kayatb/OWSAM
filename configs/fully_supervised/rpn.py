@@ -9,10 +9,21 @@ model_type = "rpn"
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 epochs = 50
-lr = 1e-4
-batch_size = 16
+batch_size = 2
 
-dir = f"rpn_mocov2_resnet50_{lr}lr_{epochs}epochs_{batch_size}bs"
+lr = 1e-2
+momentum = 0.9
+weight_decay = 1e-4
+weight_decay_norm = 0.0
+
+# Multiply the learning rate by gamma at the milestone epochs.
+gamma = 0.1
+milestones = [2, 4]  # [33, 44]
+# Do warmup for n steps and go from warmup_start_lr to initial lr.
+warmup_steps = 10  # 1000
+warmup_start_lr = 1e-3
+
+dir = f"rpn_mocov2_resnet50_SGD_{lr}lr_{epochs}epochs_{batch_size}bs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"
 

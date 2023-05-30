@@ -5,7 +5,7 @@ import torch.nn as nn
 from torchvision.models import resnet18, ResNet18_Weights, resnet50, ResNet50_Weights
 from torchvision.models.detection.backbone_utils import _resnet_fpn_extractor
 from torchvision.ops import MultiScaleRoIAlign
-from torchvision.models.detection.faster_rcnn import RoIHeads, TwoMLPHead
+from torchvision.models.detection.faster_rcnn import TwoMLPHead
 
 
 class LinearClassifier(nn.Module):

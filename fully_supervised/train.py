@@ -6,21 +6,24 @@ from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
 from modelling.mixup import mixup
 from utils.misc import get_pad_ids, add_padding
+from utils.warmup_scheduler import WarmUpScheduler
 
 import argparse
 import torch
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import MultiStepLR
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
 
 class LitFullySupervisedClassifier(pl.LightningModule):
     """Lightning module for training the fully supervised classification head."""
 
-    def __init__(self, device, label_map):
+    def __init__(self, device, label_map, len_train_data=None):
         super().__init__()
 
         self.label_map = label_map  # Mapping from continuous ids back to original annotated ones.
+        self.len_train_data = len_train_data  # Length of the train data. Necessary for warm-up scheduler.
 
         self.model = self.load_model(device)
         self.criterion = self.set_criterion(device)
@@ -57,6 +60,9 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
+
+        for param_group in self.optimizers().optimizer.param_groups:
+            print("learning_rate:", param_group["lr"])
 
         return loss
 
@@ -96,9 +102,23 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.evaluator.reset()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)
+        if config.model_type == "rpn":
+            optimizer = torch.optim.SGD(
+                self.parameters(), lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay
+            )
 
-        return optimizer
+            step_scheduler = MultiStepLR(optimizer, config.milestones, gamma=config.gamma)
+            warmup_scheduler = WarmUpScheduler(
+                optimizer,
+                step_scheduler,
+                config.warmup_steps,
+                config.warmup_start_lr,
+                self.len_train_data,
+            )
+            return [optimizer], [{"scheduler": warmup_scheduler, "interval": "step"}]
+        else:
+            optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)
+            return optimizer
 
     def load_model(self, device):
         if config.model_type == "mlp":
@@ -193,7 +213,8 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--model-type",
-        required=True,
+        # required=True,
+        default="rpn",
         choices=["mlp", "resnet", "rpn"],
         help="Which model to train (i.e. which config to use).",
     )
@@ -282,7 +303,7 @@ if __name__ == "__main__":
 
     dataloader_train, dataloader_val, label_map = load_data()
 
-    model = LitFullySupervisedClassifier(config.device, label_map)
+    model = LitFullySupervisedClassifier(config.device, label_map, len_train_data=len(dataloader_train))
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
@@ -293,13 +314,14 @@ if __name__ == "__main__":
         filename="best_model_{epoch}",
     )
     checkpoint_callback = ModelCheckpoint(dirpath=config.checkpoint_dir, every_n_epochs=config.save_every)
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     # TODO: could set precision=16 for mixed precision training, as done by RNCDL.
     # https://lightning.ai/docs/pytorch/1.5.7/advanced/mixed_precision.html
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        # limit_train_batches=0.5,  # FIXME: remove this for actual training!
-        # limit_val_batches=0.5,
+        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
+        # limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator="gpu" if config.device == "cuda" else "cpu",
@@ -309,10 +331,7 @@ if __name__ == "__main__":
         max_epochs=config.epochs,
         # gradient_clip_val=config.clip,
         # gradient_clip_algorithm="value",
-        callbacks=[
-            best_checkpoint_callback,
-            checkpoint_callback,
-        ],
+        callbacks=[best_checkpoint_callback, checkpoint_callback],
         # profiler="simple",
     )
 
