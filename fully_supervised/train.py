@@ -61,9 +61,6 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             logger=True,
         )
 
-        for param_group in self.optimizers().optimizer.param_groups:
-            print("learning_rate:", param_group["lr"])
-
         return loss
 
     def validation_step(self, batch, batch_idx):
