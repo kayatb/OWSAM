@@ -134,10 +134,11 @@ class SAMRPN(nn.Module):
     def forward(self, batch):
         features = self.feature_extractor(batch["images"])
 
-        proposals = batch["resized_boxes"]  # Boxes resized same as the image.
+        proposals = batch["trans_boxes"]  # Boxes resized same as the image.
         # proposals = [proposal for proposal in proposals]  # RoI pooler expects a list of Tensors as format.
 
-        image_shapes = batch["img_sizes"]
+        # image_shapes = batch["img_sizes"]
+        image_shapes = [img.shape[1:] for img in batch["images"]]
         box_features = self.box_roi_pool(features, proposals, image_shapes)
         box_features = self.box_head(box_features)
 
@@ -157,6 +158,7 @@ class SAMRPN(nn.Module):
 
 if __name__ == "__main__":
     from data.datasets.mask_feature_dataset import ImageMaskData
+    from tqdm import tqdm
 
     device = "cpu"
 
@@ -167,12 +169,12 @@ if __name__ == "__main__":
         "cpu",
         train=True,
     )
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageMaskData.collate_fn)
+    # dataset.img_ids = [389351, 447091]
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=dataset.collate_fn)
 
     # model = LinearClassifier(3, 100, 80)
     model = SAMRPN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
     model.to(device)
 
-    for batch in dataloader:
+    for batch in tqdm(dataloader):
         output = model(batch)
-        print("AAAA", output["pred_logits"].shape)

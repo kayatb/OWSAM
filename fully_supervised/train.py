@@ -228,7 +228,8 @@ def load_data():
         dataset_val = CropFeatureMaskData(
             config.masks_dir, config.ann_val, config.crop_feat_dir, config.device, pad_num=config.pad_num
         )
-        collate_fn = CropFeatureMaskData.collate_fn
+        collate_fn_train = CropFeatureMaskData.collate_fn
+        collate_fn_val = CropFeatureMaskData.collate_fn
 
     elif config.model_type == "resnet":
         dataset_train = CropMaskData(
@@ -237,7 +238,8 @@ def load_data():
         dataset_val = CropMaskData(
             config.masks_dir, config.ann_val, config.img_val, config.device, pad_num=config.pad_num
         )
-        collate_fn = CropMaskData.collate_fn
+        collate_fn_train = CropMaskData.collate_fn
+        collate_fn_val = CropMaskData.collate_fn
 
     elif config.model_type == "rpn":
         dataset_train = ImageMaskData(
@@ -246,7 +248,8 @@ def load_data():
         dataset_val = ImageMaskData(
             config.masks_dir, config.ann_val, config.img_val, config.device, train=False, pad_num=config.pad_num
         )
-        collate_fn = ImageMaskData.collate_fn
+        collate_fn_train = dataset_train.collate_fn
+        collate_fn_val = dataset_val.collate_fn
 
     else:
         raise ValueError(f"Unknown model_type `{config.model_type}` given.")
@@ -255,7 +258,7 @@ def load_data():
         dataset_train,
         batch_size=config.batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_train,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
@@ -266,7 +269,7 @@ def load_data():
         dataset_val,
         batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_val,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,

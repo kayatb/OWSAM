@@ -1,8 +1,10 @@
 from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy
+import utils.transforms as T
 
 import torch
-import torchvision.transforms as T
-import albumentations as A
+
+# import torchvision.transforms as T
+# import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import os
 from pycocotools.coco import COCO
@@ -169,28 +171,28 @@ class ImageMaskData(MaskData):
         self.img_dir = img_dir
         self.train = train  # Whether this is the train set or not.
 
-        if train:
-            self.transform = A.Compose(
-                [
-                    # A.Resize(448, 448),
-                    A.RandomSizedBBoxSafeCrop(448, 448, erosion_rate=0.2, p=1.0),
-                    A.HorizontalFlip(p=0.5),
-                    A.VerticalFlip(p=0.5),
-                    # A.ColorJitter(p=0.25),
-                    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                    ToTensorV2(),
-                ],
-                bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
-            )
-        else:
-            self.transform = A.Compose(
-                [
-                    A.Resize(448, 448),
-                    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                    ToTensorV2(),
-                ],
-                bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
-            )
+        # if train:
+        #     self.transform = A.Compose(
+        #         [
+        #             # A.Resize(448, 448),
+        #             A.RandomSizedBBoxSafeCrop(448, 448, erosion_rate=0.0, p=1.0),
+        #             A.HorizontalFlip(p=0.5),
+        #             A.VerticalFlip(p=0.5),
+        #             # A.ColorJitter(p=0.25),
+        #             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        #             ToTensorV2(),
+        #         ],
+        #         bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
+        #     )
+        # else:
+        #     self.transform = A.Compose(
+        #         [
+        #             A.Resize(448, 448),
+        #             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        #             ToTensorV2(),
+        #         ],
+        #         bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
+        #     )
 
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
@@ -200,23 +202,61 @@ class ImageMaskData(MaskData):
         with Image.open(os.path.join(self.img_dir, img_file)) as img:
             img = img.convert("RGB")
 
-        converted_boxes = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
+        # converted_boxes = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
 
-        transformed = self.transform(image=np.array(img), bboxes=converted_boxes)
-        data["img"] = transformed["image"]
-        data["resized_boxes"] = transformed["bboxes"]
-        data["img_size"] = (data["img"].shape[1], data["img"].shape[2])  # H x W
+        # transformed = self.transform(image=np.array(img), bboxes=converted_boxes)
+        # data["img"] = transformed["image"]
+        # data["resized_boxes"] = transformed["bboxes"]
+        data["img"] = img
+        data["trans_boxes"] = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
+        # data["img_size"] = (data["img"].shape[1], data["img"].shape[2])  # H x W
 
         return data
 
-    @staticmethod
-    def collate_fn(data):
+    # @staticmethod
+    def collate_fn(self, data):
         batch = MaskData.collate_fn(data)
-        batch["images"] = torch.stack([d["img"] for d in data])
-        batch["img_sizes"] = [d["img_size"] for d in data]
-        batch["resized_boxes"] = [
-            torch.tensor(d["resized_boxes"], dtype=torch.float) for d in data
-        ]  # Format expected by RoI pooler.
+        # batch["images"] = torch.stack([d["img"] for d in data])
+        # batch["img_sizes"] = [d["img_size"] for d in data]
+        # batch["trans_boxes"] = [
+        #     torch.tensor(d["trans_boxes"], dtype=torch.float) for d in data
+        # ]  # Format expected by RoI pooler.
+
+        if self.train:
+            # Ensure all images in the batch are randomly resized to the same size.
+            min_choices = [640, 672, 704, 736, 768, 800]
+            min_size = min_choices[torch.randint(len(min_choices), (1,)).item()]
+            transform = T.Compose(
+                [
+                    # T.RandomShortestSize(min_size=min_size, max_size=1333),
+                    T.Resize((min_size, min_size)),
+                    T.RandomHorizontalFlip(p=0.5),
+                    T.ToTensor(),
+                    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ]
+            )
+        else:
+            transform = T.Compose(
+                [
+                    # T.RandomShortestSize(min_size=800, max_size=1333),
+                    T.Resize((800, 800)),
+                    T.ToTensor(),
+                    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ]
+            )
+
+        # Do the transform on all image-boxes pairs and batch them.
+        images = []
+        batch["trans_boxes"] = []
+        for d in data:
+            img = d["img"]
+            boxes = d["trans_boxes"]
+
+            img, boxes = transform(img, boxes)
+            images.append(img)
+            batch["trans_boxes"].append(boxes)
+
+        batch["images"] = torch.stack(images)
 
         return batch
 

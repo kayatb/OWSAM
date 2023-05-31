@@ -91,7 +91,6 @@ class WarmUpScheduler(_LRScheduler):
         self.__is_ReduceLROnPlateau = isinstance(lr_scheduler, ReduceLROnPlateau)
         self.verbose = verbose
 
-        print("LEN LOADER:", self.len_loader)
         self.step()
 
     def state_dict(self):
