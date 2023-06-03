@@ -89,8 +89,9 @@ class SAMRPN(nn.Module):
         self.num_classes = num_classes
         self.pad_num = pad_num
 
-        self.feature_extractor = self.load_resnet50_fpn_with_moco(feature_extractor_ckpt, trainable_backbone_layers)
-        self.load_roi_heads(self.num_classes + 1)
+        # self.feature_extractor = self.load_resnet50_fpn_with_moco(feature_extractor_ckpt, trainable_backbone_layers)
+        self.feature_extractor, box_head_dict, classifier_dict = self.load_pretrained_model(trainable_backbone_layers)
+        self.load_roi_heads(self.num_classes + 1, box_head_dict, classifier_dict)
 
     def load_resnet50_fpn_with_moco(self, checkpoint_path, trainable_backbone_layers):
         moco_checkpoint = torch.load(checkpoint_path)
@@ -121,15 +122,46 @@ class SAMRPN(nn.Module):
 
         return feature_extractor
 
-    def load_roi_heads(self, num_classes):
+    # TODO: clean up what is returned.
+    def load_pretrained_model(
+        self,
+        trainable_backbone_layers,
+        url="https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
+    ):
+        # State dict for the complete pre-trained Faster R-CNN model.
+        state_dict = torch.hub.load_state_dict_from_url(url, progress=True)
+
+        # Load the ResNet FPN feature extractor.
+        # Rename the state dict keys to those accepted by the model.
+        backbone_state_dict = {}
+        box_head_dict = {}
+        classifier_dict = {}
+        for k in list(state_dict.keys()):
+            if k.startswith("backbone"):
+                backbone_state_dict[k[len("backbone.") :]] = state_dict[k]
+            elif k.startswith("roi_heads.box_head"):
+                box_head_dict[k[len("roi_heads.box_head.") :]] = state_dict[k]
+            elif k.startswith("roi_heads.box_predictor.cls_score"):
+                classifier_dict[k[len("roi_heads.box_predictor.cls_score.") :]] = state_dict[k]
+
+        feature_extractor = _resnet_fpn_extractor(resnet50(weights=None), trainable_layers=trainable_backbone_layers)
+        feature_extractor.load_state_dict(backbone_state_dict)
+
+        return feature_extractor, box_head_dict, classifier_dict
+
+    def load_roi_heads(self, num_classes, box_head_state_dict=None, classifier_state_dict=None):
         self.box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
         resolution = self.box_roi_pool.output_size[0]
         representation_size = 1024
         out_channels = self.feature_extractor.out_channels
         self.box_head = TwoMLPHead(out_channels * resolution**2, representation_size)
+        if box_head_state_dict:
+            self.box_head.load_state_dict(box_head_state_dict)
 
         representation_size = 1024
         self.classifier = nn.Linear(representation_size, num_classes)
+        if classifier_state_dict:
+            self.classifier.load_state_dict(classifier_state_dict)
 
     def forward(self, batch):
         features = self.feature_extractor(batch["images"])
@@ -159,6 +191,18 @@ class SAMRPN(nn.Module):
 if __name__ == "__main__":
     from data.datasets.mask_feature_dataset import ImageMaskData
     from tqdm import tqdm
+    from torchvision.models.detection import fasterrcnn_resnet50_fpn
+    from torch.hub import load_state_dict_from_url
+
+    model_urls = {
+        "fasterrcnn_resnet50_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
+    }
+
+    state_dict = load_state_dict_from_url(
+        "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth", progress=True
+    )
+
+    # print(state_dict.keys())
 
     device = "cpu"
 
@@ -173,8 +217,13 @@ if __name__ == "__main__":
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=dataset.collate_fn)
 
     # model = LinearClassifier(3, 100, 80)
-    model = SAMRPN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
+    model = SAMRPN(90, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
+    # model = fasterrcnn_resnet50_fpn()
     model.to(device)
+    # model.load_state_dict(state_dict)
+    model.eval()
 
     for batch in tqdm(dataloader):
-        output = model(batch)
+        output = model(batch["images"])
+        print(output)
+        break

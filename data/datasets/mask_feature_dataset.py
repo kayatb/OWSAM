@@ -100,9 +100,10 @@ class MaskData(torch.utils.data.Dataset):
         anns = self.coco.loadAnns(ann_ids)
 
         targets = {}
-        targets["labels"] = torch.as_tensor(
-            [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
-        )
+        # targets["labels"] = torch.as_tensor(
+        #     [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
+        # )
+        targets["labels"] = torch.as_tensor([ann["category_id"] for ann in anns], dtype=torch.long)
         targets["boxes"] = torch.as_tensor([ann["bbox"] for ann in anns])
 
         return targets
@@ -238,8 +239,8 @@ class ImageMaskData(MaskData):
         else:
             transform = T.Compose(
                 [
-                    # T.RandomShortestSize(min_size=800, max_size=1333),
-                    T.Resize((800, 800)),
+                    T.RandomShortestSize(min_size=800, max_size=1333),
+                    # T.Resize((800, 800)),
                     T.ToTensor(),
                     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ]

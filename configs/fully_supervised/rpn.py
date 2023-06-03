@@ -9,7 +9,7 @@ model_type = "rpn"
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 epochs = 50
-batch_size = 16
+batch_size = 1
 
 lr = 1e-2
 momentum = 0.9
@@ -26,6 +26,8 @@ warmup_start_lr = 1e-3
 dir = f"rpn_mocov2_resnet50_SGD_{lr}lr_{epochs}epochs_{batch_size}bs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"
+
+num_classes = 90
 
 # RNCDL settings:
 # augmentations:

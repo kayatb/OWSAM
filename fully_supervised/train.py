@@ -65,28 +65,29 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
-        loss = self.criterion(outputs, batch["targets"])
+        # loss = self.criterion(outputs, batch["targets"])
 
-        self.log(
-            "val_class_error",
-            loss["class_error"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        self.log(
-            "val_loss_ce",
-            loss["loss"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        # self.log(
+        #     "val_class_error",
+        #     loss["class_error"].item(),
+        #     batch_size=len(batch["boxes"]),
+        #     on_step=False,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        # )
+        # self.log(
+        #     "val_loss_ce",
+        #     loss["loss"].item(),
+        #     batch_size=len(batch["boxes"]),
+        #     on_step=False,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        # )
 
-        results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map)
+        results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, self.model.num_classes)
+        print("targets", [b["labels"] for b in batch["targets"]])
         self.evaluator.update(results)
 
     def on_validation_epoch_end(self):
@@ -126,6 +127,9 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             model = ResNetClassifier(config.num_classes, config.pad_num)
         elif config.model_type == "rpn":
             model = SAMRPN(config.num_classes, config.feature_extractor_ckpt, pad_num=config.pad_num)
+
+            # from torchvision.models.detection import fasterrcnn_resnet50_fpn
+            # model = fasterrcnn_resnet50_fpn(weights=None)
         else:
             raise ValueError(f"Unknown model type `{type}` given.")
         model.to(device)
@@ -248,6 +252,7 @@ def load_data():
         dataset_val = ImageMaskData(
             config.masks_dir, config.ann_val, config.img_val, config.device, train=False, pad_num=config.pad_num
         )
+        dataset_val.img_ids = dataset_val.img_ids[:100]
         collate_fn_train = dataset_train.collate_fn
         collate_fn_val = dataset_val.collate_fn
 
@@ -334,11 +339,11 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    trainer.fit(model, dataloader_train, dataloader_val)
+    # trainer.fit(model, dataloader_train, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/dino_features/supervised_coco_dino_3layers_2048dim_1e-3lr-6oT8y-2741952/best_model_epoch=7.ckpt",
     #     device=config.device,
     #     label_map=label_map,
     # )
-    # trainer.validate(model, dataloader_val)
+    trainer.validate(model, dataloader_val)

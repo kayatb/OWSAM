@@ -163,8 +163,13 @@ class CocoEvaluator(object):
         return coco_results
 
     @staticmethod
-    def to_coco_format(img_ids, outputs, label_map):
+    def to_coco_format(img_ids, outputs, label_map, num_classes):
+        from utils.misc import box_xyxy_to_xywh
+
         results = {}
+        # for i in range(len(img_ids)):
+        #     results[img_ids[i]] = outputs[i]
+        #     results[img_ids[i]]["boxes"] = box_xyxy_to_xywh(results[img_ids[i]]["boxes"])
 
         for i in range(len(img_ids)):
             labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
@@ -173,10 +178,11 @@ class CocoEvaluator(object):
             concat = torch.cat(
                 (labels.unsqueeze(1), outputs["iou_scores"][i].unsqueeze(1), outputs["pred_boxes"][i]), dim=1
             )
-            concat = concat[concat[:, 0] != 80]
+            concat = concat[concat[:, 0] != num_classes]
 
             labels = concat[:, 0]
-            labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
+            print(labels)
+            # labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
 
             results[img_ids[i]] = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": labels}
 
