@@ -9,7 +9,7 @@ model_type = "rpn"
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 epochs = 50
-batch_size = 1
+batch_size = 4  # Use 1 here for Faster R-CNN pre-trained evalution to account for different image sizes.
 
 lr = 1e-2
 momentum = 0.9
@@ -27,7 +27,7 @@ dir = f"rpn_mocov2_resnet50_SGD_{lr}lr_{epochs}epochs_{batch_size}bs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"
 
-num_classes = 90
+num_classes = 80  # Use 90 here for Faster R-CNN pre-trained
 
 # RNCDL settings:
 # augmentations:

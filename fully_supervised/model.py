@@ -76,22 +76,29 @@ class SAMRPN(nn.Module):
     """Boxes extracted from SAM as ROI proposals (i.e. SAM is RPN), then ROI align on
     the feature map extracted from the whole image, and classification of those ROIs."""
 
-    def __init__(self, num_classes, feature_extractor_ckpt, trainable_backbone_layers=5, pad_num=700):
+    def __init__(self, num_classes, feature_extractor_ckpt=None, trainable_backbone_layers=5, pad_num=700):
         """Args:
         num_classes: number of classes to predict, without the background class
         feature_extractor_ckpt: location of the checkpoint for the feature extractor
         image_size: square size to which the images are resized
         trainable_backbone_layers: number of non-frozen layers starting from the final block. Valid values
         are between 0 and 5, with 5 meaning all blocks are trainable."""
-        # RNCDL uses ResNet-50 FPN with MoCo v2 initialization (https://github.com/facebookresearch/moco)
-        # They also add AMP and SyncBatchNorm to stabilize training
         super().__init__()
         self.num_classes = num_classes
         self.pad_num = pad_num
 
-        # self.feature_extractor = self.load_resnet50_fpn_with_moco(feature_extractor_ckpt, trainable_backbone_layers)
-        self.feature_extractor, box_head_dict, classifier_dict = self.load_pretrained_model(trainable_backbone_layers)
-        self.load_roi_heads(self.num_classes + 1, box_head_dict, classifier_dict)
+        box_head_dict = None
+        classifier_dict = None
+        if feature_extractor_ckpt:
+            self.feature_extractor = self.load_resnet50_fpn_with_moco(feature_extractor_ckpt, trainable_backbone_layers)
+        else:
+            self.feature_extractor, box_head_dict, classifier_dict = self.load_pretrained_model(
+                trainable_backbone_layers
+            )
+
+        self.box_roi_pool, self.box_head, self.classifier = self.load_roi_heads(
+            self.num_classes + 1, box_head_dict, classifier_dict
+        )
 
     def load_resnet50_fpn_with_moco(self, checkpoint_path, trainable_backbone_layers):
         moco_checkpoint = torch.load(checkpoint_path)
@@ -122,16 +129,15 @@ class SAMRPN(nn.Module):
 
         return feature_extractor
 
-    # TODO: clean up what is returned.
     def load_pretrained_model(
         self,
         trainable_backbone_layers,
         url="https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
     ):
+        """Load the weights for a Faster R-CNN network pre-trained on COCO and use SAM as the RPN."""
         # State dict for the complete pre-trained Faster R-CNN model.
         state_dict = torch.hub.load_state_dict_from_url(url, progress=True)
 
-        # Load the ResNet FPN feature extractor.
         # Rename the state dict keys to those accepted by the model.
         backbone_state_dict = {}
         box_head_dict = {}
@@ -150,26 +156,27 @@ class SAMRPN(nn.Module):
         return feature_extractor, box_head_dict, classifier_dict
 
     def load_roi_heads(self, num_classes, box_head_state_dict=None, classifier_state_dict=None):
-        self.box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
-        resolution = self.box_roi_pool.output_size[0]
+        """Load the RoI pooler and the classifier."""
+        box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+        resolution = box_roi_pool.output_size[0]
         representation_size = 1024
         out_channels = self.feature_extractor.out_channels
-        self.box_head = TwoMLPHead(out_channels * resolution**2, representation_size)
+        box_head = TwoMLPHead(out_channels * resolution**2, representation_size)
         if box_head_state_dict:
-            self.box_head.load_state_dict(box_head_state_dict)
+            box_head.load_state_dict(box_head_state_dict)
 
         representation_size = 1024
-        self.classifier = nn.Linear(representation_size, num_classes)
+        classifier = nn.Linear(representation_size, num_classes)
         if classifier_state_dict:
-            self.classifier.load_state_dict(classifier_state_dict)
+            classifier.load_state_dict(classifier_state_dict)
+
+        return box_roi_pool, box_head, classifier
 
     def forward(self, batch):
         features = self.feature_extractor(batch["images"])
 
         proposals = batch["trans_boxes"]  # Boxes resized same as the image.
-        # proposals = [proposal for proposal in proposals]  # RoI pooler expects a list of Tensors as format.
 
-        # image_shapes = batch["img_sizes"]
         image_shapes = [img.shape[1:] for img in batch["images"]]
         box_features = self.box_roi_pool(features, proposals, image_shapes)
         box_features = self.box_head(box_features)
@@ -194,15 +201,9 @@ if __name__ == "__main__":
     from torchvision.models.detection import fasterrcnn_resnet50_fpn
     from torch.hub import load_state_dict_from_url
 
-    model_urls = {
-        "fasterrcnn_resnet50_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
-    }
-
     state_dict = load_state_dict_from_url(
         "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth", progress=True
     )
-
-    # print(state_dict.keys())
 
     device = "cpu"
 
@@ -213,11 +214,11 @@ if __name__ == "__main__":
         "cpu",
         train=True,
     )
-    # dataset.img_ids = [389351, 447091]
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=dataset.collate_fn)
 
-    # model = LinearClassifier(3, 100, 80)
-    model = SAMRPN(90, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
+    model = SAMRPN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")  # For MoCo weights.
+    # model = SAMRPN(90)  # For pre-trained faster_r_cnn weights
+
     # model = fasterrcnn_resnet50_fpn()
     model.to(device)
     # model.load_state_dict(state_dict)

@@ -2,15 +2,11 @@ from utils.misc import filter_empty_imgs, crop_bboxes_from_img, box_xywh_to_xyxy
 import utils.transforms as T
 
 import torch
-
-# import torchvision.transforms as T
-# import albumentations as A
-from albumentations.pytorch import ToTensorV2
+import torchvision.transforms as TVT
 import os
 from pycocotools.coco import COCO
 from lvis import LVIS
 from PIL import Image
-import numpy as np
 
 
 class MaskData(torch.utils.data.Dataset):
@@ -61,7 +57,6 @@ class MaskData(torch.utils.data.Dataset):
         # keys: 'area', 'bbox', 'predicted_iou', 'stability_score', 'mask_feature'
         mask_data = torch.load(file_path, map_location=self.device)
 
-        # img_id = int(os.path.splitext(self.files[idx])[0])
         targets = self.get_targets(self.img_ids[idx])
 
         # Pad the output to a uniform number for batched processing.
@@ -100,10 +95,11 @@ class MaskData(torch.utils.data.Dataset):
         anns = self.coco.loadAnns(ann_ids)
 
         targets = {}
-        # targets["labels"] = torch.as_tensor(
-        #     [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
-        # )
-        targets["labels"] = torch.as_tensor([ann["category_id"] for ann in anns], dtype=torch.long)
+        targets["labels"] = torch.as_tensor(
+            [self.cat_id_to_continuous[ann["category_id"]] for ann in anns], dtype=torch.long
+        )
+        # NOTE: pre-trained Faster R-CNN does not use continuous IDs, but original COCO IDs.
+        # targets["labels"] = torch.as_tensor([ann["category_id"] for ann in anns], dtype=torch.long)
         targets["boxes"] = torch.as_tensor([ann["bbox"] for ann in anns])
 
         return targets
@@ -172,29 +168,6 @@ class ImageMaskData(MaskData):
         self.img_dir = img_dir
         self.train = train  # Whether this is the train set or not.
 
-        # if train:
-        #     self.transform = A.Compose(
-        #         [
-        #             # A.Resize(448, 448),
-        #             A.RandomSizedBBoxSafeCrop(448, 448, erosion_rate=0.0, p=1.0),
-        #             A.HorizontalFlip(p=0.5),
-        #             A.VerticalFlip(p=0.5),
-        #             # A.ColorJitter(p=0.25),
-        #             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        #             ToTensorV2(),
-        #         ],
-        #         bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
-        #     )
-        # else:
-        #     self.transform = A.Compose(
-        #         [
-        #             A.Resize(448, 448),
-        #             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        #             ToTensorV2(),
-        #         ],
-        #         bbox_params=A.BboxParams(format="pascal_voc", label_fields=[]),
-        #     )
-
     def __getitem__(self, idx):
         data = super().__getitem__(idx)
 
@@ -203,14 +176,8 @@ class ImageMaskData(MaskData):
         with Image.open(os.path.join(self.img_dir, img_file)) as img:
             img = img.convert("RGB")
 
-        # converted_boxes = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
-
-        # transformed = self.transform(image=np.array(img), bboxes=converted_boxes)
-        # data["img"] = transformed["image"]
-        # data["resized_boxes"] = transformed["bboxes"]
         data["img"] = img
         data["trans_boxes"] = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
-        # data["img_size"] = (data["img"].shape[1], data["img"].shape[2])  # H x W
 
         return data
 
@@ -239,8 +206,9 @@ class ImageMaskData(MaskData):
         else:
             transform = T.Compose(
                 [
-                    T.RandomShortestSize(min_size=800, max_size=1333),
-                    # T.Resize((800, 800)),
+                    # NOTE: resolution for pre-trained Faster R-CNN model evaluation.
+                    # T.RandomShortestSize(min_size=800, max_size=1333),
+                    T.Resize((800, 800)),
                     T.ToTensor(),
                     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ]
@@ -289,12 +257,12 @@ class CropMaskData(MaskData):
         return data
 
     def preprocess(self, img):
-        transform = T.Compose(
+        transform = TVT.Compose(
             [
-                T.Resize(self.resize),
-                T.CenterCrop(self.center_crop),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                TVT.Resize(self.resize),
+                TVT.CenterCrop(self.center_crop),
+                TVT.ToTensor(),
+                TVT.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
 

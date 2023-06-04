@@ -164,12 +164,7 @@ class CocoEvaluator(object):
 
     @staticmethod
     def to_coco_format(img_ids, outputs, label_map, num_classes):
-        from utils.misc import box_xyxy_to_xywh
-
         results = {}
-        # for i in range(len(img_ids)):
-        #     results[img_ids[i]] = outputs[i]
-        #     results[img_ids[i]]["boxes"] = box_xyxy_to_xywh(results[img_ids[i]]["boxes"])
 
         for i in range(len(img_ids)):
             labels = torch.argmax(outputs["pred_logits"][i], dim=1)  # Get labels from the logits
@@ -181,38 +176,12 @@ class CocoEvaluator(object):
             concat = concat[concat[:, 0] != num_classes]
 
             labels = concat[:, 0]
-            print(labels)
-            # labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
+            # NOTE: don't do this for pre-trained Faster R-CNN
+            labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
 
             results[img_ids[i]] = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": labels}
 
         return results
-
-    # def prepare_for_coco_keypoint(self, predictions):
-    #     coco_results = []
-    #     for original_id, prediction in predictions.items():
-    #         if len(prediction) == 0:
-    #             continue
-
-    #         boxes = prediction["boxes"]
-    #         boxes = convert_to_xywh(boxes).tolist()
-    #         scores = prediction["scores"].tolist()
-    #         labels = prediction["labels"].tolist()
-    #         keypoints = prediction["keypoints"]
-    #         keypoints = keypoints.flatten(start_dim=1).tolist()
-
-    #         coco_results.extend(
-    #             [
-    #                 {
-    #                     "image_id": original_id,
-    #                     "category_id": labels[k],
-    #                     "keypoints": keypoint,
-    #                     "score": scores[k],
-    #                 }
-    #                 for k, keypoint in enumerate(keypoints)
-    #             ]
-    #         )
-    #     return coco_results
 
 
 def merge(img_ids, eval_imgs):
