@@ -86,17 +86,17 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             logger=True,
         )
 
-        # results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, self.model.num_classes)
-        # self.evaluator.update(results)
+        results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, self.model.num_classes)
+        self.evaluator.update(results)
 
-    # def on_validation_epoch_end(self):
-    #     self.evaluator.synchronize_between_processes()
-    #     self.evaluator.accumulate()
-    #     results = self.evaluator.summarize()
+    def on_validation_epoch_end(self):
+        self.evaluator.synchronize_between_processes()
+        self.evaluator.accumulate()
+        results = self.evaluator.summarize()
 
-    #     self.log_dict(results["bbox"])
+        self.log_dict(results["bbox"])
 
-    #     self.evaluator.reset()
+        self.evaluator.reset()
 
     def configure_optimizers(self):
         if config.model_type == "rpn":
