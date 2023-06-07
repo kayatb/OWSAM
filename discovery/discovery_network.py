@@ -212,8 +212,8 @@ class DiscoveryClassifier(nn.Module):
         return logits_full
 
     def forward_heads(self, feats):
-        logits_lab = self.head_lab(feats)["pred_logits"]
-        logits_unlab, _ = self.head_unlab(feats["mask_features"])
+        logits_lab = self.head_lab(feats)  # TODO: do we need padding here?
+        logits_unlab, _ = self.head_unlab(feats)
         logits_unlab /= self.temperature
 
         out = {
@@ -230,7 +230,6 @@ class DiscoveryClassifier(nn.Module):
         return out_dict
 
     def forward(self, views):
-        # Forward through classifier heads
         outputs = self.forward_classifier(views)
 
         # Process outputs

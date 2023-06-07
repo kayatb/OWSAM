@@ -9,10 +9,16 @@ weight_decay = None
 clip = 1.0  # Gradient clipping
 clip_type = "value"
 
-ann_train = "../datasets/coco/annotations/instances_train2017.json"
-ann_val = "../datasets/coco/annotations/instances_val2017.json"
-masks_train = "mask_features/mask_features_25"
-masks_val = "mask_features/mask_features_25"
+ann_train_labeled = "../datasets/coco/annotations/instances_train2017.json"
+ann_val_labeled = "../datasets/coco/annotations/instances_val2017.json"
+ann_train_unlabeled = "../datasets/lvis/lvis_v1_train.json"
+ann_val_unlabeled = "../datasets/lvis/lvis_v1_val.json"
+
+masks_dir = "mask_features/all"
+img_train = "../datasets/coco/train2017"
+img_val = "../datasets/coco/val2017"
+
+feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 # Supervised classifier settings
 supervis_num_layers = 10
@@ -21,20 +27,20 @@ supervis_hidden_dim = 512
 # RNCDL settings
 num_labeled = 80  # + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
 num_unlabeled = 2100
-feat_dim = 256
+feat_dim = 1024
 hidden_dim = 512
 proj_dim = 256
-num_views = 1  # Original RNCDL is 2, but no straight-forward way (yet) to do augmentation on mask features.
+num_views = 2
 memory_batches = 100
 items_per_batch = 50
-memory_patience = 150
+memory_patience = 10  # 150
 num_iters_sk = 3
 epsilon_sk = 0.05
 temperature = 0.1
 supervised_loss_lambda = 0.01
 
 
-batch_size = 16  # RNCDL uses 4*4 per GPU
+batch_size = 1  # 16  # RNCDL uses 4*4 per GPU
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 

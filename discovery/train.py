@@ -1,12 +1,13 @@
 import configs.discovery as config
-from data.mask_feature_dataset import MaskData
-from discovery.discovery_network import DiscoveryClassifier
+from data.datasets.mask_feature_dataset import ImageMaskData
+from discovery.discovery_model import DiscoveryModel
 
 import argparse
 import torch
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.utilities import CombinedLoader
 
 # from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
@@ -21,22 +22,33 @@ class LitDiscovery(pl.LightningModule):
         # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")
 
     def training_step(self, batch, batch_idx):
-        loss, supervised_loss, discovery_loss = self.model(batch)
+        # FIXME: padding is weird now, since we don't have a bg class anymore
+        loss, supervised_loss, discovery_loss = self.model(batch["labeled"], batch["unlabeled"])
         supervised_loss = {"train_" + k: v for k, v in supervised_loss.items()}
         discovery_loss = {"train_" + k: v for k, v in discovery_loss.items()}
 
         self.log_dict(
-            supervised_loss, batch_size=len(batch["boxes"]), on_step=True, on_epoch=True, prog_bar=True, logger=True
+            supervised_loss,
+            batch_size=len(batch["labeled"]["boxes"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
         )
         self.log_dict(
-            discovery_loss, batch_size=len(batch["boxes"]), on_step=True, on_epoch=True, prog_bar=True, logger=True
+            discovery_loss,
+            batch_size=len(batch["labeled"]["boxes"]),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
         )
 
         self.log(
             "train_total_loss",
             loss,
-            batch_size=len(batch["boxes"]),
-            on_step=True,
+            batch_size=len(batch["labeled"]["boxes"]),
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -45,6 +57,7 @@ class LitDiscovery(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        # TODO: handle sequential combined dataloading
         # TODO: Calculate / update / log evaluation metric
         loss, supervised_loss, discovery_loss = self.model(batch)
 
@@ -52,16 +65,26 @@ class LitDiscovery(pl.LightningModule):
         discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
 
         self.log_dict(
-            supervised_loss, batch_size=len(batch["boxes"]), on_step=False, on_epoch=True, prog_bar=True, logger=True
+            supervised_loss,
+            batch_size=len(batch["labeled"]["boxes"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
         )
         self.log_dict(
-            discovery_loss, batch_size=len(batch["boxes"]), on_step=False, on_epoch=True, prog_bar=True, logger=True
+            discovery_loss,
+            batch_size=len(batch["labeled"]["boxes"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
         )
 
         self.log(
             "val_total_loss",
             loss,
-            batch_size=len(batch["boxes"]),
+            batch_size=len(batch["labeled"]["boxes"]),
             on_step=False,
             on_epoch=True,
             prog_bar=True,
@@ -79,22 +102,7 @@ class LitDiscovery(pl.LightningModule):
         return optimizer
 
     def load_model(self, device):
-        model = DiscoveryClassifier(
-            num_labeled=config.num_labeled,
-            num_unlabeled=config.num_unlabeled,
-            feat_dim=config.feat_dim,
-            hidden_dim=config.hidden_dim,
-            proj_dim=config.proj_dim,
-            num_views=config.num_views,
-            memory_batches=config.memory_batches,
-            items_per_batch=config.items_per_batch,
-            memory_patience=config.memory_patience,
-            num_iters_sk=config.num_iters_sk,
-            epsilon_sk=config.epsilon_sk,
-            temperature=config.temperature,
-            batch_size=config.batch_size,
-            num_hidden_layers=config.num_layers,
-        )
+        model = DiscoveryModel("checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt")
         model.to(device)
 
         return model
@@ -123,14 +131,17 @@ def parse_args():
 def load_data():
     # For using multiple dataloaders, see --> https://lightning.ai/docs/pytorch/latest/data/iterables.html#multiple-dataloaders
     # TODO: return labeled and unlabeled dataloader here.
-    dataset_train_labeled = MaskData(config.masks_train, config.ann_train, config.device, pad_num=config.pad_num)
-    dataset_val_labeled = MaskData(config.masks_val, config.ann_val, config.device, pad_num=config.pad_num)
-
+    dataset_train_labeled = ImageMaskData(
+        config.masks_dir, config.ann_train_labeled, config.img_train, config.device, train=True, pad_num=config.pad_num
+    )
+    dataset_val_labeled = ImageMaskData(
+        config.masks_dir, config.ann_val_labeled, config.img_val, config.device, train=False, pad_num=config.pad_num
+    )
     dataloader_train_labeled = DataLoader(
         dataset_train_labeled,
         batch_size=config.batch_size,
         shuffle=True,
-        collate_fn=MaskData.collate_fn,
+        collate_fn=dataset_train_labeled.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
@@ -141,14 +152,54 @@ def load_data():
         dataset_val_labeled,
         batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=MaskData.collate_fn,
+        collate_fn=dataset_val_labeled.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
         prefetch_factor=3,
     )
 
-    return dataloader_train_labeled, dataloader_val_labeled
+    dataset_train_unlabeled = ImageMaskData(
+        config.masks_dir,
+        config.ann_train_unlabeled,
+        config.img_train,
+        config.device,
+        train=True,
+        pad_num=config.pad_num,
+    )
+    dataset_val_unlabeled = ImageMaskData(
+        config.masks_dir, config.ann_val_unlabeled, config.img_val, config.device, train=False, pad_num=config.pad_num
+    )
+    dataloader_train_unlabeled = DataLoader(
+        dataset_train_unlabeled,
+        batch_size=config.batch_size,
+        shuffle=True,
+        collate_fn=dataset_train_unlabeled.collate_fn,
+        num_workers=config.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
+    )
+
+    dataloader_val_unlabeled = DataLoader(
+        dataset_val_unlabeled,
+        batch_size=config.batch_size,
+        shuffle=False,
+        collate_fn=dataset_val_unlabeled.collate_fn,
+        num_workers=config.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+        prefetch_factor=3,
+    )
+
+    dataloader_train = CombinedLoader(
+        {"labeled": dataloader_train_labeled, "unlabeled": dataloader_train_unlabeled}, mode="max_size_cycle"
+    )
+    dataloader_val = CombinedLoader(
+        {"labeled": dataloader_val_labeled, "unlabeled": dataloader_val_unlabeled}, mode="sequential"
+    )
+
+    return dataloader_train, dataloader_val
 
 
 if __name__ == "__main__":
@@ -196,7 +247,7 @@ if __name__ == "__main__":
         ],
     )
 
-    trainer.fit(model, dataloader_train, dataloader_val)
+    trainer.fit(model, dataloader_train)  # , dataloader_val)  # FIXME: fix validation step and put val dataloader back
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
