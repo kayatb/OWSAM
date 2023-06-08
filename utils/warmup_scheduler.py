@@ -6,7 +6,7 @@ Use it with optimizer, lr_scheduler and len(dataloader).
 """
 
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
+from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau, CosineAnnealingLR
 
 __all__ = ["VERSION", "WarmUpScheduler"]
 
@@ -154,6 +154,9 @@ class WarmUpScheduler(_LRScheduler):
                 self.lr_scheduler.step(metrics, epoch)
             else:
                 self.lr_scheduler.step(epoch)
+
+        elif self.__warmup_done and isinstance(self.lr_scheduler, CosineAnnealingLR):
+            self.lr_scheduler.step(epoch)
 
         elif (not self.__warmup_done) and (self.last_step <= self.warmup_steps):
             values = self.get_warmup_lr()

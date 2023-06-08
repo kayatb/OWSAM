@@ -34,5 +34,5 @@ num_classes = 80  # Use 90 here for Faster R-CNN pre-trained
 # random resize, random flips
 
 # batch size = 16
-# SGD optimizer for 180K iterations => 50 epochs
+# SGD optimizer for 180K iterations on half of the dataset => 50 epochs
 # linearly increase lr from 10^-3 to 10^-2 for the first 1k iterations and decrease it tenfold at iterations 120k and 160k.

@@ -8,17 +8,17 @@ from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.utilities import CombinedLoader
-
-# from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from utils.warmup_scheduler import WarmUpScheduler
 
 
 class LitDiscovery(pl.LightningModule):
     """Lightning module for training the discovery network."""
 
-    def __init__(self, device):
+    def __init__(self, device, len_train_data):
         super().__init__()
+        self.len_train_data = len_train_data
         self.model = self.load_model(device)
-        # self.criterion = self.set_criterion(device)
         # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")
 
     def training_step(self, batch, batch_idx):
@@ -30,7 +30,7 @@ class LitDiscovery(pl.LightningModule):
         self.log_dict(
             supervised_loss,
             batch_size=len(batch["labeled"]["boxes"]),
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -49,11 +49,14 @@ class LitDiscovery(pl.LightningModule):
             "train_total_loss",
             loss,
             batch_size=len(batch["labeled"]["boxes"]),
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
         )
+        lightning_optimizer = self.optimizers()  # self = your model
+        for param_group in lightning_optimizer.optimizer.param_groups:
+            print("lr", param_group["lr"])
 
         return loss
 
@@ -98,9 +101,21 @@ class LitDiscovery(pl.LightningModule):
 
     def configure_optimizers(self):
         # TODO: RNCDL uses SGD here.
-        optimizer = torch.optim.AdamW(self.parameters(), lr=config.lr)
+        optimizer = torch.optim.SGD(
+            self.parameters(), lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay
+        )
 
-        return optimizer
+        cosine_scheduler = CosineAnnealingLR(
+            optimizer, eta_min=config.end_lr, T_max=config.epochs * self.len_train_data
+        )
+        warmup_scheduler = WarmUpScheduler(
+            optimizer,
+            cosine_scheduler,
+            config.warmup_steps,
+            config.warmup_start_lr,
+            self.len_train_data,
+        )
+        return [optimizer], [{"scheduler": warmup_scheduler, "interval": "step"}]
 
     def load_model(self, device):
         model = DiscoveryModel("checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt")
@@ -201,7 +216,7 @@ def load_data():
         {"labeled": dataloader_val_labeled, "unlabeled": dataloader_val_unlabeled}, mode="sequential"
     )
 
-    return dataloader_train, dataloader_val
+    return dataloader_train, dataloader_val  # , len(dataloader_train_unlabeled)
 
 
 if __name__ == "__main__":
@@ -218,7 +233,7 @@ if __name__ == "__main__":
 
     dataloader_train, dataloader_val = load_data()
 
-    model = LitDiscovery(config.device)
+    model = LitDiscovery(config.device, len(dataloader_train))
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
@@ -241,8 +256,8 @@ if __name__ == "__main__":
         devices=config.num_devices,
         enable_checkpointing=True,
         max_epochs=config.epochs,
-        gradient_clip_val=config.clip,
-        gradient_clip_algorithm=config.clip_type,
+        # gradient_clip_val=config.clip,
+        # gradient_clip_algorithm=config.clip_type,
         callbacks=[
             best_checkpoint_callback,
             checkpoint_callback,
