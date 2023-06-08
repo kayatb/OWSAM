@@ -1,12 +1,14 @@
 """
 Transforms that work on an image and its corresponding bounding boxes.
-Copied and adapted from: https://github.com/pytorch/vision/blob/main/references/detection/transforms.py
+Partially copied and adapted from: https://github.com/pytorch/vision/blob/main/references/detection/transforms.py
 """
 from utils.misc import resize_bboxes
 
 from torchvision.transforms import functional as F
 from torchvision.transforms import transforms as T, InterpolationMode
 import torch
+from PIL import ImageFilter
+import random
 
 
 class Compose:
@@ -17,6 +19,42 @@ class Compose:
         for t in self.transforms:
             image, target = t(image, target)
         return image, target
+
+
+class ColorJitter(T.ColorJitter):
+    def __init__(self, brightness, contrast, saturation, hue, prob=1.0):
+        super().__init__(brightness, contrast, saturation, hue)
+        self.prob = prob
+
+    def forward(self, image, boxes=None):
+        if torch.rand(1) < self.prob:
+            image = super().forward(image)
+        return image, boxes
+
+
+class GrayScale(T.Grayscale):
+    def __init__(self, num_output_channels=1, prob=1.0):
+        super().__init__(num_output_channels=num_output_channels)
+        self.prob = prob
+
+    def forward(self, image, boxes=None):
+        if torch.rand(1) < self.prob:
+            image = super().forward(image)
+        return image, boxes
+
+
+class GaussianBlur(torch.nn.Module):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[0.1, 2.0], prob=1.0):
+        self.sigma = sigma
+        self.prob = prob
+
+    def __call__(self, image, boxes=None):
+        if torch.rand(1) < self.prob:
+            sigma = random.uniform(self.sigma[0], self.sigma[1])
+            image = image.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return image, boxes
 
 
 class RandomHorizontalFlip(T.RandomHorizontalFlip):
@@ -41,12 +79,6 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
                 boxes[:, [0, 1]] = height - boxes[:, [1, 0]]
 
         return image, boxes
-
-
-# class PILToTensor(torch.nn.Module):
-#     def forward(self, image, target):
-#         image = F.pil_to_tensor(image)
-#         return image, target
 
 
 class ToTensor(T.ToTensor):

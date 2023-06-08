@@ -251,7 +251,9 @@ class DiscoveryImageMaskData(ImageMaskData):
                         # T.RandomShortestSize(min_size=min_size, max_size=1333),
                         T.Resize((min_size, min_size)),
                         T.RandomHorizontalFlip(p=0.5),
-                        # TODO: colorjitter and shizzle
+                        T.ColorJitter(0.8, 0.8, 0.8, 0.2, prob=0.8),
+                        T.GrayScale(num_output_channels=3, prob=0.2),
+                        T.GaussianBlur(sigma=[0.1, 2.0], prob=0.5),
                         T.ToTensor(),
                         T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                     ]
