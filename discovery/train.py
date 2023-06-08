@@ -54,9 +54,10 @@ class LitDiscovery(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        lightning_optimizer = self.optimizers()  # self = your model
-        for param_group in lightning_optimizer.optimizer.param_groups:
-            print("lr", param_group["lr"])
+
+        # lightning_optimizer = self.optimizers()  # self = your model
+        # for param_group in lightning_optimizer.optimizer.param_groups:
+        #     print("lr", param_group["lr"])
 
         return loss
 
@@ -100,7 +101,6 @@ class LitDiscovery(pl.LightningModule):
         pass
 
     def configure_optimizers(self):
-        # TODO: RNCDL uses SGD here.
         optimizer = torch.optim.SGD(
             self.parameters(), lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay
         )
@@ -146,7 +146,6 @@ def parse_args():
 
 def load_data():
     # For using multiple dataloaders, see --> https://lightning.ai/docs/pytorch/latest/data/iterables.html#multiple-dataloaders
-    # TODO: return labeled and unlabeled dataloader here.
     dataset_train_labeled = ImageMaskData(
         config.masks_dir, config.ann_train_labeled, config.img_train, config.device, train=True, pad_num=config.pad_num
     )

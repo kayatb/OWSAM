@@ -58,12 +58,6 @@ class DiscoveryModel(nn.Module):
 
         # Generate features for two different augmented images (so each in feats)
         # Extract features for the ROIs from both augmented images
-        # views = self.discovery_data_processor.map_batched_data(unsupervised_batch)
-        # TODO: do actual augmentations here. Make it return images and bounding boxes
-        # views = [
-        #     {"images": unsupervised_batch["images"], "boxes": unsupervised_batch["trans_boxes"]},
-        #     {"images": unsupervised_batch["images"], "boxes": unsupervised_batch["trans_boxes"]},
-        # ]
         # Input to discovery_model should be list with the RoI features for each view.
         roi_feats = []
         for i in range(len(unsupervised_batch["images"])):

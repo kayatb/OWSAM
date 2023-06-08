@@ -2,7 +2,6 @@
 from configs.fully_supervised.rpn import momentum, weight_decay
 
 epochs = 10
-# TODO: RNCDL uses a cosine warmup LR schedule
 lr = 1e-2  # halfed compared to supervised phase.
 end_lr = 1e-3  # Minimum LR for cosine annealing scheduler.
 # Do warmup for n steps and go from warmup_start_lr to initial lr.
