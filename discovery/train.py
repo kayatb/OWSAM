@@ -1,5 +1,5 @@
 import configs.discovery as config
-from data.datasets.mask_feature_dataset import ImageMaskData
+from data.datasets.mask_feature_dataset import ImageMaskData, DiscoveryImageMaskData
 from discovery.discovery_model import DiscoveryModel
 
 import argparse
@@ -37,7 +37,7 @@ class LitDiscovery(pl.LightningModule):
         )
         self.log(
             "discovery_loss",
-            discovery_loss["loss"],
+            discovery_loss["train_discovery_loss"],
             batch_size=len(batch["labeled"]["boxes"]),
             on_step=True,
             on_epoch=True,
@@ -160,15 +160,16 @@ def load_data():
         prefetch_factor=3,
     )
 
-    dataset_train_unlabeled = ImageMaskData(
+    dataset_train_unlabeled = DiscoveryImageMaskData(
         config.masks_dir,
         config.ann_train_unlabeled,
         config.img_train,
         config.device,
         train=True,
         pad_num=config.pad_num,
+        num_views=config.num_views,
     )
-    dataset_val_unlabeled = ImageMaskData(
+    dataset_val_unlabeled = DiscoveryImageMaskData(
         config.masks_dir, config.ann_val_unlabeled, config.img_val, config.device, train=False, pad_num=config.pad_num
     )
     dataloader_train_unlabeled = DataLoader(

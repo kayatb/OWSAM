@@ -230,6 +230,73 @@ class ImageMaskData(MaskData):
         return batch
 
 
+# TODO: clean up this utter mess.
+class DiscoveryImageMaskData(ImageMaskData):
+    def __init__(self, mask_dir, ann_file, img_dir, device, train=False, pad_num=700, num_views=2):
+        super().__init__(mask_dir, ann_file, img_dir, device, train=train, pad_num=pad_num)
+        self.num_views = num_views
+
+    def collate_fn(self, data):
+        batch = MaskData.collate_fn(data)
+
+        if self.train:
+            batch["images"] = []
+            batch["trans_boxes"] = []
+            min_choices = [640, 672, 704, 736, 768, 800]
+            for _ in range(self.num_views):
+                # Ensure all images in the batch are randomly resized to the same size.
+                min_size = min_choices[torch.randint(len(min_choices), (1,)).item()]
+                transform = T.Compose(
+                    [
+                        # T.RandomShortestSize(min_size=min_size, max_size=1333),
+                        T.Resize((min_size, min_size)),
+                        T.RandomHorizontalFlip(p=0.5),
+                        # TODO: colorjitter and shizzle
+                        T.ToTensor(),
+                        T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                    ]
+                )
+
+                images = []
+                trans_boxes = []
+                for d in data:
+                    img = d["img"]
+                    boxes = d["trans_boxes"]
+
+                    img, boxes = transform(img, boxes)
+                    images.append(img)
+                    trans_boxes.append(boxes)
+
+                batch["images"].append(torch.stack(images))
+                batch["trans_boxes"].append(trans_boxes)
+
+        else:
+            transform = T.Compose(
+                [
+                    # NOTE: resolution for pre-trained Faster R-CNN model evaluation.
+                    # T.RandomShortestSize(min_size=800, max_size=1333),
+                    T.Resize((800, 800)),
+                    T.ToTensor(),
+                    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ]
+            )
+
+            # Do the transform on all image-boxes pairs and batch them.
+            images = []
+            batch["trans_boxes"] = []
+            for d in data:
+                img = d["img"]
+                boxes = d["trans_boxes"]
+
+                img, boxes = transform(img, boxes)
+                images.append(img)
+                batch["trans_boxes"].append(boxes)
+
+            batch["images"] = torch.stack(images)
+
+        return batch
+
+
 class CropMaskData(MaskData):
     def __init__(self, box_dir, ann_file, img_dir, device, pad_num=700, resize=256, center_crop=224):
         super().__init__(box_dir, ann_file, device, pad_num)
