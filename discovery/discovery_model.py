@@ -16,6 +16,10 @@ class DiscoveryModel(nn.Module):
 
         self.supervised_model = self.load_supervised_model(supervised_ckpt)
         self.remove_background_from_supervised_model()
+        # Freeze all components except for the classification head.
+        # self.supervised_model.feature_extractor.freeze()
+        # self.supervised_model.box_roi_pool.freeze()
+        # self.supervised_model.box_head.freeze()
         self.supervised_criterion = self.load_supervised_criterion()
         self.supervised_loss_lambda = config.supervised_loss_lambda
 
@@ -52,10 +56,6 @@ class DiscoveryModel(nn.Module):
         if not self.is_discovery_memory_filled():
             supervised_loss["supervised_loss"] *= 0
 
-        # TODO: change discovery network forward pass to accommodate batch.
-        # Extract the features for both
-        # Extract the ROI features for both
-        # Forward through classifier heads
         # Generate features for two different augmented images (so each in feats)
         # Extract features for the ROIs from both augmented images
         # views = self.discovery_data_processor.map_batched_data(unsupervised_batch)
@@ -67,7 +67,7 @@ class DiscoveryModel(nn.Module):
         # Input to discovery_model should be list with the RoI features for each view.
         roi_feats = []
         for view in views:
-            with torch.no_grad():  # TODO: make sure everything but the classification heads are frozen
+            with torch.no_grad():
                 img_feat = self.supervised_model.feature_extractor(view["images"])
                 img_shapes = [img.shape[1:] for img in view["images"]]
                 roi_feat = self.supervised_model.box_roi_pool(img_feat, view["boxes"], img_shapes)
@@ -92,7 +92,7 @@ class DiscoveryModel(nn.Module):
             if key.startswith("model"):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
-        model = SAMRPN(config.num_labeled, config.feature_extractor_ckpt, pad_num=config.pad_num)
+        model = SAMRPN(config.num_labeled, config.feature_extractor_ckpt, pad_num=config.pad_num, freeze=True)
         model.load_state_dict(model_state_dict)
 
         return model

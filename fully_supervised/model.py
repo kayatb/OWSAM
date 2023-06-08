@@ -76,16 +76,20 @@ class SAMRPN(nn.Module):
     """Boxes extracted from SAM as ROI proposals (i.e. SAM is RPN), then ROI align on
     the feature map extracted from the whole image, and classification of those ROIs."""
 
-    def __init__(self, num_classes, feature_extractor_ckpt=None, trainable_backbone_layers=5, pad_num=700):
+    def __init__(
+        self, num_classes, feature_extractor_ckpt=None, trainable_backbone_layers=5, pad_num=700, freeze=False
+    ):
         """Args:
         num_classes: number of classes to predict, without the background class
         feature_extractor_ckpt: location of the checkpoint for the feature extractor
         image_size: square size to which the images are resized
         trainable_backbone_layers: number of non-frozen layers starting from the final block. Valid values
-        are between 0 and 5, with 5 meaning all blocks are trainable."""
+        are between 0 and 5, with 5 meaning all blocks are trainable.
+        freeze: whether every component but the classification head is frozen. This is needed for discovery."""
         super().__init__()
         self.num_classes = num_classes
         self.pad_num = pad_num
+        self.freeze = freeze
 
         box_head_dict = None
         classifier_dict = None
@@ -173,15 +177,17 @@ class SAMRPN(nn.Module):
         return box_roi_pool, box_head, classifier
 
     def forward(self, batch):
-        features = self.feature_extractor(batch["images"])
+        with torch.set_grad_enabled(not self.freeze):
+            features = self.feature_extractor(batch["images"])
 
-        proposals = batch["trans_boxes"]  # Boxes resized same as the image.
+            proposals = batch["trans_boxes"]  # Boxes resized same as the image.
 
-        image_shapes = [img.shape[1:] for img in batch["images"]]
-        box_features = self.box_roi_pool(features, proposals, image_shapes)
-        box_features = self.box_head(box_features)
+            image_shapes = [img.shape[1:] for img in batch["images"]]
+            box_features = self.box_roi_pool(features, proposals, image_shapes)
+            box_features = self.box_head(box_features)
 
-        x = box_features.flatten(start_dim=1)
+            x = box_features.flatten(start_dim=1)
+
         class_logits = self.classifier(x)
 
         padded_class_logits = add_padding(

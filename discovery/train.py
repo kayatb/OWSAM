@@ -35,8 +35,9 @@ class LitDiscovery(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        self.log_dict(
-            discovery_loss,
+        self.log(
+            "discovery_loss",
+            discovery_loss["loss"],
             batch_size=len(batch["labeled"]["boxes"]),
             on_step=True,
             on_epoch=True,

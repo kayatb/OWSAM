@@ -32,15 +32,15 @@ hidden_dim = 512
 proj_dim = 256
 num_views = 2
 memory_batches = 100
-items_per_batch = 50
-memory_patience = 10  # 150
+items_per_batch = 50  # TODO: take here the average number of masks predicted by SAM
+memory_patience = 150
 num_iters_sk = 3
 epsilon_sk = 0.05
 temperature = 0.1
 supervised_loss_lambda = 0.01
 
 
-batch_size = 1  # 16  # RNCDL uses 4*4 per GPU
+batch_size = 2  # 16  # RNCDL uses 4*4 per GPU
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 
@@ -66,4 +66,11 @@ SGD = L(torch.optim.SGD)(
     momentum=0.9,
     weight_decay=1e-4,
 )
+
+During the discovery training phase, we train for 15K iterations with a learning rate of 10^-2 and
+follow a cosine decay schedule with linear ramp-up. The learning rate is linearly increased from
+10^-5 to 10^-2 for the first 3K epochs and then decayed with a cosine decay schedule [51] to 10^-3.
+
+We also use a supervised loss scale coefficient of 0.5, which results in an effective learning rate for
+the supervised loss to be twice smaller than that of the discovery loss.
 """
