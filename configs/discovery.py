@@ -5,7 +5,7 @@ epochs = 10
 lr = 1e-2  # halfed compared to supervised phase.
 end_lr = 1e-3  # Minimum LR for cosine annealing scheduler.
 # Do warmup for n steps and go from warmup_start_lr to initial lr.
-warmup_steps = 10  # 3000
+warmup_steps = 3000
 warmup_start_lr = 1e-5
 
 ann_train_labeled = "../datasets/coco/annotations/instances_train2017.json"
@@ -51,13 +51,85 @@ seed = 29
 
 save_every = 1
 
-"""
-TODO: We also use a supervised loss scale coefficient of 0.5, which results in an effective learning rate for
-the supervised loss to be twice smaller than that of the discovery loss.
-
-lvis known class ids: [3, 12, 34, 35, 36, 41, 45, 58, 60, 76, 77, 80, 90, 94, 99, 118, 127, 133, 139, 154, 173, 183,
-                         207, 217, 225, 230, 232, 271, 296, 344, 367, 378, 387, 421, 422, 445, 469, 474, 496, 534, 569,
-                         611, 615, 631, 687, 703, 705, 716, 735, 739, 766, 793, 816, 837, 881, 912, 923, 943, 961, 962,
-                         964, 976, 982, 1000, 1019, 1037, 1071, 1077, 1079, 1095, 1097, 1102, 1112, 1115, 1123, 1133,
-                         1139, 1190, 1202]
-"""
+# Class IDs of known classes in LVIS dataset, used for evaluation.
+lvis_known_class_ids = [
+    3,
+    12,
+    34,
+    35,
+    36,
+    41,
+    45,
+    58,
+    60,
+    76,
+    77,
+    80,
+    90,
+    94,
+    99,
+    118,
+    127,
+    133,
+    139,
+    154,
+    173,
+    183,
+    207,
+    217,
+    225,
+    230,
+    232,
+    271,
+    296,
+    344,
+    367,
+    378,
+    387,
+    421,
+    422,
+    445,
+    469,
+    474,
+    496,
+    534,
+    569,
+    611,
+    615,
+    631,
+    687,
+    703,
+    705,
+    716,
+    735,
+    739,
+    766,
+    793,
+    816,
+    837,
+    881,
+    912,
+    923,
+    943,
+    961,
+    962,
+    964,
+    976,
+    982,
+    1000,
+    1019,
+    1037,
+    1071,
+    1077,
+    1079,
+    1095,
+    1097,
+    1102,
+    1112,
+    1115,
+    1123,
+    1133,
+    1139,
+    1190,
+    1202,
+]

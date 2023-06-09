@@ -48,37 +48,44 @@ class DiscoveryModel(nn.Module):
         # )
 
     def forward(self, supervised_batch, unsupervised_batch):
-        supervised_output = self.supervised_model(supervised_batch)
-        # print("pred", torch.argmax(supervised_output["pred_logits"][: supervised_batch["num_masks"][0]], dim=-1))
-        # print("target", supervised_batch["targets"][0]["labels"])
-        # Contains "supervised_loss" and "supervised_class_error"
-        supervised_loss = self.supervised_criterion(supervised_output, supervised_batch["targets"])
-        supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
-        supervised_loss["supervised_ce_loss"] = supervised_loss["supervised_loss"].item()
+        if supervised_batch is not None:
+            supervised_output = self.supervised_model(supervised_batch)
+            # print("pred", torch.argmax(supervised_output["pred_logits"][: supervised_batch["num_masks"][0]], dim=-1))
+            # print("target", supervised_batch["targets"][0]["labels"])
+            # Contains "supervised_loss" and "supervised_class_error"
+            supervised_loss = self.supervised_criterion(supervised_output, supervised_batch["targets"])
+            supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
+            supervised_loss["supervised_ce_loss"] = supervised_loss["supervised_loss"].item()
 
-        if not self.is_discovery_memory_filled():
-            supervised_loss["supervised_loss"] *= 0
+            if not self.is_discovery_memory_filled():
+                supervised_loss["supervised_loss"] *= 0
+        else:
+            supervised_loss = {"supervised_loss": 0}
+            supervised_output = None
 
-        # Generate features for two different augmented images (so each in feats)
-        # Extract features for the ROIs from both augmented images
-        # Input to discovery_model should be list with the RoI features for each view.
-        roi_feats = []
-        for i in range(len(unsupervised_batch["images"])):
-            with torch.no_grad():
-                img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"][i])
-                img_shapes = [img.shape[1:] for img in unsupervised_batch["images"][i]]
-                roi_feat = self.supervised_model.box_roi_pool(
-                    img_feat, unsupervised_batch["trans_boxes"][i], img_shapes
-                )
-                roi_feat = self.supervised_model.box_head(roi_feat)
-            roi_feats.append(roi_feat)
+        if unsupervised_batch is not None:
+            # Generate features for two different augmented images (so each in feats)
+            # Extract features for the ROIs from both augmented images
+            # Input to discovery_model should be list with the RoI features for each view.
+            roi_feats = []
+            for i in range(len(unsupervised_batch["images"])):
+                with torch.no_grad():
+                    img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"][i])
+                    img_shapes = [img.shape[1:] for img in unsupervised_batch["images"][i]]
+                    roi_feat = self.supervised_model.box_roi_pool(
+                        img_feat, unsupervised_batch["trans_boxes"][i], img_shapes
+                    )
+                    roi_feat = self.supervised_model.box_head(roi_feat)
+                roi_feats.append(roi_feat)
 
-        discovery_loss = self.discovery_model(roi_feats)
-        discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
+            discovery_loss = self.discovery_model(roi_feats)
+            discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
+        else:
+            discovery_loss = {"discovery_loss": 0}
 
         loss = supervised_loss["supervised_loss"] * self.supervised_loss_lambda + discovery_loss["discovery_loss"]
 
-        return loss, supervised_loss, discovery_loss
+        return loss, supervised_loss, discovery_loss, supervised_output
 
     def load_supervised_model(self, ckpt_path):
         """Load the pre-trained supervised classification head."""

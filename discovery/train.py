@@ -1,6 +1,8 @@
 import configs.discovery as config
 from data.datasets.mask_feature_dataset import ImageMaskData, DiscoveryImageMaskData
 from discovery.discovery_model import DiscoveryModel
+from eval.coco_eval import CocoEvaluator
+from eval.lvis_eval import LvisEvaluator
 
 import argparse
 import torch
@@ -15,16 +17,19 @@ from utils.warmup_scheduler import WarmUpScheduler
 class LitDiscovery(pl.LightningModule):
     """Lightning module for training the discovery network."""
 
-    def __init__(self, device, len_train_data):
+    def __init__(self, device, len_train_data, label_map):
         super().__init__()
         self.len_train_data = len_train_data
         self.model = self.load_model(device)
-        # self.map = MeanAveragePrecision(box_format="xywh", iou_type="bbox")
+        self.supervis_evaluator = CocoEvaluator(config.ann_val_labeled, ["bbox"])
+        self.discovery_evaluator = LvisEvaluator(config.ann_val_unlabeled, ["bbox"])
+        self.label_map = label_map  # Label mapping for the labelled dataset.
 
     def training_step(self, batch, batch_idx):
         # FIXME: padding is weird now, since we don't have a bg class anymore
-        loss, supervised_loss, discovery_loss = self.model(batch["labeled"], batch["unlabeled"])
+        loss, supervised_loss, discovery_loss, _ = self.model(batch["labeled"], batch["unlabeled"])
         supervised_loss = {"train_" + k: v for k, v in supervised_loss.items()}
+        del supervised_loss["train_supervised_loss"]  # Equal to CE loss.
         discovery_loss = {"train_" + k: v for k, v in discovery_loss.items()}
 
         self.log_dict(
@@ -36,7 +41,7 @@ class LitDiscovery(pl.LightningModule):
             logger=True,
         )
         self.log(
-            "discovery_loss",
+            "train_discovery_loss",
             discovery_loss["train_discovery_loss"],
             batch_size=len(batch["labeled"]["boxes"]),
             on_step=True,
@@ -61,44 +66,54 @@ class LitDiscovery(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
+        # Validation datasets are processed sequentially instead of in parallel,
+        # so we only have a supervised or unsupervised batch at a time.
         # TODO: handle sequential combined dataloading
         # TODO: Calculate / update / log evaluation metric
-        loss, supervised_loss, discovery_loss = self.model(batch)
+        if dataloader_idx == 0:  # Labeled dataset
+            _, supervised_loss, _, outputs = self.model(supervised_batch=batch, unsupervised_batch=None)
+            supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
+            self.log_dict(
+                supervised_loss,
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, config.num_labeled)
+            self.supervis_evaluator.update(results)
 
-        supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
-        discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
+        # else:  # Unlabeled dataset
+        #     _, _, discovery_loss = self.model(supervised_batch=None, unsupervised_batch=batch)
+        #     discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
 
-        self.log_dict(
-            supervised_loss,
-            batch_size=len(batch["labeled"]["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        self.log_dict(
-            discovery_loss,
-            batch_size=len(batch["labeled"]["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-
-        self.log(
-            "val_total_loss",
-            loss,
-            batch_size=len(batch["labeled"]["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        #     self.log(
+        #         "val_discovery_loss",
+        #         discovery_loss["val_discovery_loss"],
+        #         batch_size=len(batch["boxes"]),
+        #         on_step=False,
+        #         on_epoch=True,
+        #         prog_bar=True,
+        #         logger=True,
+        #     )
 
     def on_validation_epoch_end(self):
         # TODO: Calculate and log evaluation metric over whole dataset
-        pass
+        # Evaluator for labeled dataset
+        self.supervis_evaluator.synchronize_between_processes()
+        self.supervis_evaluator.accumulate()
+        results = self.supervis_evaluator.summarize()
+
+        self.log_dict(results["bbox"])
+
+        self.supervis_evaluator.reset()
+
+        # Evaluator for unlabeled dataset.
+        # results = self.discovery_evaluator.summarize()
+        # self.log_dict(results["bbox"])
+        # self.discovery_evaluator.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -215,7 +230,7 @@ def load_data():
         {"labeled": dataloader_val_labeled, "unlabeled": dataloader_val_unlabeled}, mode="sequential"
     )
 
-    return dataloader_train, dataloader_val  # , len(dataloader_train_unlabeled)
+    return dataloader_train, dataloader_val, dataset_val_labeled.continuous_to_cat_id
 
 
 if __name__ == "__main__":
@@ -230,9 +245,9 @@ if __name__ == "__main__":
 
     pl.seed_everything(config.seed, workers=True)
 
-    dataloader_train, dataloader_val = load_data()
+    dataloader_train, dataloader_val, label_map = load_data()
 
-    model = LitDiscovery(config.device, len(dataloader_train))
+    model = LitDiscovery(config.device, len(dataloader_train), label_map)
 
     # Trainer callbacks.
     best_checkpoint_callback = ModelCheckpoint(
@@ -255,15 +270,13 @@ if __name__ == "__main__":
         devices=config.num_devices,
         enable_checkpointing=True,
         max_epochs=config.epochs,
-        # gradient_clip_val=config.clip,
-        # gradient_clip_algorithm=config.clip_type,
         callbacks=[
             best_checkpoint_callback,
             checkpoint_callback,
         ],
     )
 
-    trainer.fit(model, dataloader_train)  # , dataloader_val)  # FIXME: fix validation step and put val dataloader back
+    trainer.fit(model, dataloader_train, dataloader_val)  # FIXME: fix validation step and put val dataloader back
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
