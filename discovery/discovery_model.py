@@ -39,6 +39,7 @@ class DiscoveryModel(nn.Module):
             temperature=config.temperature,
             batch_size=config.batch_size,
             num_hidden_layers=config.num_layers,
+            sk_mode="lognormal",
         )
         # self.discovery_data_processor = DiscoveryDataProcessor(
         #     augmentations=DiscoveryDataProcessor.strong_augmentations_list_swav_no_scalejitter(),
@@ -48,6 +49,8 @@ class DiscoveryModel(nn.Module):
 
     def forward(self, supervised_batch, unsupervised_batch):
         supervised_output = self.supervised_model(supervised_batch)
+        # print("pred", torch.argmax(supervised_output["pred_logits"][: supervised_batch["num_masks"][0]], dim=-1))
+        # print("target", supervised_batch["targets"][0]["labels"])
         # Contains "supervised_loss" and "supervised_class_error"
         supervised_loss = self.supervised_criterion(supervised_output, supervised_batch["targets"])
         supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
@@ -120,6 +123,7 @@ class DiscoveryModel(nn.Module):
             eos_coef=eos_coef,
             losses=losses,
         )
+        criterion.empty_weight[-1] = 1  # Weight for bg class no longer necessary, because there isn't one.
         # criterion.to(device)
 
         return criterion

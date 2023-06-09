@@ -21,7 +21,7 @@ feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
 # RNCDL settings
 num_labeled = 80  # + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
-num_unlabeled = 2100
+num_unlabeled = 3000  # 2100
 feat_dim = 1024
 hidden_dim = 512
 proj_dim = 256
@@ -32,7 +32,7 @@ memory_patience = 150
 num_iters_sk = 3
 epsilon_sk = 0.05
 temperature = 0.1
-supervised_loss_lambda = 0.01
+supervised_loss_lambda = 0.5  # 0.01
 
 num_layers = 3
 hidden_dim = 256
@@ -51,35 +51,8 @@ seed = 29
 
 save_every = 1
 
-# RNCDL optimizer
 """
-SGD = L(torch.optim.SGD)(
-    params=L(get_default_optimizer_params)(
-        # params.model is meant to be set to the model object, before instantiating
-        # the optimizer.
-        weight_decay_norm=0.0
-    ),
-    lr=0.01,
-    momentum=0.9,
-    weight_decay=1e-4,
-)
-
-# Use cosine LR schedule
-lr_multiplier = L(WarmupParamScheduler)(
-    scheduler=L(CosineParamScheduler)(
-        start_value=1,
-        end_value=0.1,
-    ),
-    warmup_length=0.5 * one_epoch_niter / train.max_iter,
-    warmup_method="linear",
-    warmup_factor=1e-3,
-)
-
-During the discovery training phase, we train for 15K iterations with a learning rate of 10^-2 and
-follow a cosine decay schedule with linear ramp-up. The learning rate is linearly increased from
-10^-5 to 10^-2 for the first 3K epochs and then decayed with a cosine decay schedule [51] to 10^-3.
-
-We also use a supervised loss scale coefficient of 0.5, which results in an effective learning rate for
+TODO: We also use a supervised loss scale coefficient of 0.5, which results in an effective learning rate for
 the supervised loss to be twice smaller than that of the discovery loss.
 
 lvis known class ids: [3, 12, 34, 35, 36, 41, 45, 58, 60, 76, 77, 80, 90, 94, 99, 118, 127, 133, 139, 154, 173, 183,
