@@ -37,7 +37,7 @@ supervised_loss_lambda = 0.5  # 0.01
 num_layers = 3
 hidden_dim = 256
 
-batch_size = 2  # 16  # RNCDL uses 4*4 per GPU
+batch_size = 3  # 16  # RNCDL uses 4*4 per GPU
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 

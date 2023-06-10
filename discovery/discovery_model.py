@@ -2,7 +2,6 @@ import configs.discovery as config
 from fully_supervised.model import SAMRPN
 from discovery.discovery_network import DiscoveryClassifier
 
-# from discovery.discovery_data_processor import DiscoveryDataProcessor
 from modelling.criterion import SetCriterion
 from modelling.matcher import HungarianMatcher
 
@@ -41,13 +40,13 @@ class DiscoveryModel(nn.Module):
             num_hidden_layers=config.num_layers,
             sk_mode="lognormal",
         )
-        # self.discovery_data_processor = DiscoveryDataProcessor(
-        #     augmentations=DiscoveryDataProcessor.strong_augmentations_list_swav_no_scalejitter(),
-        #     num_augmentations=2,
-        #     image_format="RGB",
-        # )
 
     def forward(self, supervised_batch, unsupervised_batch):
+        supervised_output = None
+        supervised_loss = {"supervised_loss": 0}
+        discovery_output = None
+        discovery_loss = {"discovery_loss": 0}
+
         if supervised_batch is not None:
             supervised_output = self.supervised_model(supervised_batch)
             # print("pred", torch.argmax(supervised_output["pred_logits"][: supervised_batch["num_masks"][0]], dim=-1))
@@ -59,33 +58,38 @@ class DiscoveryModel(nn.Module):
 
             if not self.is_discovery_memory_filled():
                 supervised_loss["supervised_loss"] *= 0
-        else:
-            supervised_loss = {"supervised_loss": 0}
-            supervised_output = None
 
         if unsupervised_batch is not None:
             # Generate features for two different augmented images (so each in feats)
             # Extract features for the ROIs from both augmented images
             # Input to discovery_model should be list with the RoI features for each view.
-            roi_feats = []
-            for i in range(len(unsupervised_batch["images"])):
+            if self.training:
+                roi_feats = []
+                for i in range(len(unsupervised_batch["images"])):
+                    with torch.no_grad():
+                        img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"][i])
+                        img_shapes = [img.shape[1:] for img in unsupervised_batch["images"][i]]
+                        roi_feat = self.supervised_model.box_roi_pool(
+                            img_feat, unsupervised_batch["trans_boxes"][i], img_shapes
+                        )
+                        roi_feat = self.supervised_model.box_head(roi_feat)
+                    roi_feats.append(roi_feat)
+
+                discovery_loss = self.discovery_model(roi_feats)
+                discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
+            else:
                 with torch.no_grad():
-                    img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"][i])
-                    img_shapes = [img.shape[1:] for img in unsupervised_batch["images"][i]]
+                    img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"])
+                    img_shapes = [img.shape[1:] for img in unsupervised_batch["images"]]
                     roi_feat = self.supervised_model.box_roi_pool(
-                        img_feat, unsupervised_batch["trans_boxes"][i], img_shapes
+                        img_feat, unsupervised_batch["trans_boxes"], img_shapes
                     )
                     roi_feat = self.supervised_model.box_head(roi_feat)
-                roi_feats.append(roi_feat)
-
-            discovery_loss = self.discovery_model(roi_feats)
-            discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
-        else:
-            discovery_loss = {"discovery_loss": 0}
+                discovery_output = self.discovery_model.forward_heads_single_view(roi_feat)
 
         loss = supervised_loss["supervised_loss"] * self.supervised_loss_lambda + discovery_loss["discovery_loss"]
 
-        return loss, supervised_loss, discovery_loss, supervised_output
+        return loss, supervised_loss, discovery_loss, supervised_output, discovery_output
 
     def load_supervised_model(self, ckpt_path):
         """Load the pre-trained supervised classification head."""

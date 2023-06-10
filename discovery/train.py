@@ -27,7 +27,7 @@ class LitDiscovery(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # FIXME: padding is weird now, since we don't have a bg class anymore
-        loss, supervised_loss, discovery_loss, _ = self.model(batch["labeled"], batch["unlabeled"])
+        loss, supervised_loss, discovery_loss, _, _ = self.model(batch["labeled"], batch["unlabeled"])
         supervised_loss = {"train_" + k: v for k, v in supervised_loss.items()}
         del supervised_loss["train_supervised_loss"]  # Equal to CE loss.
         discovery_loss = {"train_" + k: v for k, v in discovery_loss.items()}
@@ -72,8 +72,11 @@ class LitDiscovery(pl.LightningModule):
         # TODO: handle sequential combined dataloading
         # TODO: Calculate / update / log evaluation metric
         if dataloader_idx == 0:  # Labeled dataset
-            _, supervised_loss, _, outputs = self.model(supervised_batch=batch, unsupervised_batch=None)
+            print("SUPERVIS VAL")
+            _, supervised_loss, _, outputs, _ = self.model(supervised_batch=batch, unsupervised_batch=None)
             supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
+            del supervised_loss["val_supervised_loss"]  # Equal to CE loss.
+
             self.log_dict(
                 supervised_loss,
                 batch_size=len(batch["boxes"]),
@@ -85,19 +88,21 @@ class LitDiscovery(pl.LightningModule):
             results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, config.num_labeled)
             self.supervis_evaluator.update(results)
 
-        # else:  # Unlabeled dataset
-        #     _, _, discovery_loss = self.model(supervised_batch=None, unsupervised_batch=batch)
-        #     discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
+        else:  # Unlabeled dataset
+            print("DISCOVERY VAL")
+            # TODO: implement discovery forward pass without view augmentations.
+            _, _, discovery_loss, _, outputs = self.model(supervised_batch=None, unsupervised_batch=batch)
+            discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
 
-        #     self.log(
-        #         "val_discovery_loss",
-        #         discovery_loss["val_discovery_loss"],
-        #         batch_size=len(batch["boxes"]),
-        #         on_step=False,
-        #         on_epoch=True,
-        #         prog_bar=True,
-        #         logger=True,
-        #     )
+            self.log(
+                "val_discovery_loss",
+                discovery_loss["val_discovery_loss"],
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
 
     def on_validation_epoch_end(self):
         # TODO: Calculate and log evaluation metric over whole dataset
@@ -199,7 +204,13 @@ def load_data():
         num_views=config.num_views,
     )
     dataset_val_unlabeled = DiscoveryImageMaskData(
-        config.masks_dir, config.ann_val_unlabeled, config.img_val, config.device, train=False, pad_num=config.pad_num
+        config.masks_dir,
+        config.ann_val_unlabeled,
+        config.img_val,
+        config.device,
+        train=False,
+        pad_num=config.pad_num,
+        num_views=config.num_views,
     )
     dataloader_train_unlabeled = DataLoader(
         dataset_train_unlabeled,
