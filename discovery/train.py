@@ -22,7 +22,9 @@ class LitDiscovery(pl.LightningModule):
         self.len_train_data = len_train_data
         self.model = self.load_model(device)
         self.supervis_evaluator = CocoEvaluator(config.ann_val_labeled, ["bbox"])
-        self.discovery_evaluator = LvisEvaluator(config.ann_val_unlabeled, ["bbox"])
+        self.discovery_evaluator = LvisEvaluator(
+            config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids
+        )  # TODO: check if known class IDs are continuous or original IDs
         self.label_map = label_map  # Label mapping for the labelled dataset.
 
     def training_step(self, batch, batch_idx):
@@ -69,10 +71,8 @@ class LitDiscovery(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx):
         # Validation datasets are processed sequentially instead of in parallel,
         # so we only have a supervised or unsupervised batch at a time.
-        # TODO: handle sequential combined dataloading
         # TODO: Calculate / update / log evaluation metric
         if dataloader_idx == 0:  # Labeled dataset
-            print("SUPERVIS VAL")
             _, supervised_loss, _, outputs, _ = self.model(supervised_batch=batch, unsupervised_batch=None)
             supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
             del supervised_loss["val_supervised_loss"]  # Equal to CE loss.
@@ -89,8 +89,6 @@ class LitDiscovery(pl.LightningModule):
             self.supervis_evaluator.update(results)
 
         else:  # Unlabeled dataset
-            print("DISCOVERY VAL")
-            # TODO: implement discovery forward pass without view augmentations.
             _, _, discovery_loss, _, outputs = self.model(supervised_batch=None, unsupervised_batch=batch)
             discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
 
@@ -103,9 +101,14 @@ class LitDiscovery(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
+            results = LvisEvaluator.to_lvis_format(
+                batch["img_ids"], outputs, self.label_map
+            )  # TODO: label map for LVIS dataset
+            self.discovery_evaluator.update(results)
 
     def on_validation_epoch_end(self):
         # TODO: Calculate and log evaluation metric over whole dataset
+        # TODO: ensure there is a key e.g. "map_all" we can use to checkpoint the best model.
         # Evaluator for labeled dataset
         self.supervis_evaluator.synchronize_between_processes()
         self.supervis_evaluator.accumulate()
@@ -116,9 +119,9 @@ class LitDiscovery(pl.LightningModule):
         self.supervis_evaluator.reset()
 
         # Evaluator for unlabeled dataset.
-        # results = self.discovery_evaluator.summarize()
-        # self.log_dict(results["bbox"])
-        # self.discovery_evaluator.reset()
+        results = self.discovery_evaluator.summarize()
+        self.log_dict(results["bbox"])
+        self.discovery_evaluator.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -272,8 +275,8 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        # limit_train_batches=0.5,  # FIXME: remove this for actual training!
-        # limit_val_batches=0.5,
+        limit_train_batches=0.001,  # FIXME: remove this for actual training!
+        limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator="gpu" if config.device == "cuda" else "cpu",
