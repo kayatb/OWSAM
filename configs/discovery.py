@@ -51,6 +51,11 @@ seed = 29
 
 save_every = 1
 
+# Settings for mapping discovered classes to GT classes.
+novel_class_id_thresh = 10000
+max_class_num = 20000
+last_free_class_id = 10000
+
 # Class IDs of known classes in LVIS dataset, used for evaluation.
 lvis_known_class_ids = [
     3,
