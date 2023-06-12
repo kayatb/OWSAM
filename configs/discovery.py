@@ -28,7 +28,7 @@ proj_dim = 256
 num_views = 2
 memory_batches = 100
 items_per_batch = 50  # TODO: take here the average number of masks predicted by SAM
-memory_patience = 5  # 150
+memory_patience = 150
 num_iters_sk = 3
 epsilon_sk = 0.05
 temperature = 0.1
@@ -37,7 +37,7 @@ supervised_loss_lambda = 0.5  # 0.01
 num_layers = 3
 hidden_dim = 256
 
-batch_size = 3  # 16  # RNCDL uses 4*4 per GPU
+batch_size = 16  # RNCDL uses 4*4 per GPU
 num_workers = 12
 pad_num = 700  # Max number of detected masks in COCO is 666.
 
