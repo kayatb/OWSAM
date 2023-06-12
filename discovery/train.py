@@ -3,9 +3,6 @@ from data.datasets.mask_feature_dataset import ImageMaskData, DiscoveryImageMask
 from discovery.discovery_model import DiscoveryModel
 from eval.coco_eval import CocoEvaluator
 
-from eval.lvis_eval import LvisEvaluator
-from eval.class_mapping import ClassMapper
-
 import argparse
 import torch
 from torch.utils.data import DataLoader
@@ -26,15 +23,8 @@ class LitDiscovery(pl.LightningModule):
         self.len_train_data = len_train_data
         self.model = self.load_model(device)
         self.supervis_evaluator = CocoEvaluator(config.ann_val_labeled, ["bbox"])
-        # self.discovery_label_mapper = ClassMapper(
-        #     config.last_free_class_id, config.max_class_num, config.novel_class_id_thresh
-        # )
-        # self.discovery_evaluator = LvisEvaluator(
-        #     config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids
-        # )  # TODO: check if known class IDs are continuous or original IDs
 
         self.supervis_label_map = supervis_label_map  # Label mapping for the labelled dataset.
-        # self.discovery_preds = []
 
     def training_step(self, batch, batch_idx):
         # FIXME: padding is weird now, since we don't have a bg class anymore
@@ -46,7 +36,7 @@ class LitDiscovery(pl.LightningModule):
         self.log_dict(
             supervised_loss,
             batch_size=len(batch["labeled"]["boxes"]),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -55,7 +45,7 @@ class LitDiscovery(pl.LightningModule):
             "train_discovery_loss",
             discovery_loss["train_discovery_loss"],
             batch_size=len(batch["labeled"]["boxes"]),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -65,7 +55,7 @@ class LitDiscovery(pl.LightningModule):
             "train_total_loss",
             loss,
             batch_size=len(batch["labeled"]["boxes"]),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -77,15 +67,9 @@ class LitDiscovery(pl.LightningModule):
 
         return loss
 
-    # def on_validation_epoch_start(self) -> None:
-    #     # Calculate the discovery class mapping by classifying all validation GT boxes.
-    #     # TODO: do a special discovery mapping pass on the GT target boxes to get their classification.
-    #     return super().on_validation_epoch_start()
-
     def validation_step(self, batch, batch_idx, dataloader_idx):
         # Validation datasets are processed sequentially instead of in parallel,
         # so we only have a supervised or unsupervised batch at a time.
-        # TODO: Calculate / update / log evaluation metric
         if dataloader_idx == 0:  # Labeled dataset
             _, supervised_loss, _, outputs, _ = self.model(supervised_batch=batch, unsupervised_batch=None)
             supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
@@ -117,16 +101,9 @@ class LitDiscovery(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-            # self.discovery_label_mapper.update(batch, torch.argmax(outputs, dim=-1))
-            # self.discovery_preds.extend(self.pred_to_lvis_format(batch, outputs))
-            # results = LvisEvaluator.to_lvis_format(
-            #     batch["img_ids"], outputs, self.discovery_label_mapper.class_mapping
-            # )  # TODO: label map for LVIS dataset
-            # self.discovery_evaluator.update(results)
 
     def on_validation_epoch_end(self):
-        # TODO: Calculate and log evaluation metric over whole dataset
-        # TODO: ensure there is a key e.g. "map_all" we can use to checkpoint the best model.
+        # Evaluation on the supervised dataset.
         # Evaluator for labeled dataset
         self.supervis_evaluator.synchronize_between_processes()
         self.supervis_evaluator.accumulate()
@@ -135,18 +112,6 @@ class LitDiscovery(pl.LightningModule):
         self.log_dict(results["bbox"])
 
         self.supervis_evaluator.reset()
-
-        # Evaluator for unlabeled dataset.
-        # self.discovery_label_mapper.get_mapping()
-        # for pred in self.discovery_preds:
-        #     pred["category_id"] = self.discovery_label_mapper.class_mapping[pred["category_id"]]
-        # lvis_eval = LVISEval(config.ann_val_unlabeled, self.discovery_preds, "bbox")
-        # lvis_eval.run()
-        # lvis_eval.print_results()
-        # results = self.discovery_evaluator.summarize()
-        # self.log_dict(results["bbox"])
-        # self.discovery_evaluator.reset()
-        # self.discovery_label_mapper.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -171,43 +136,17 @@ class LitDiscovery(pl.LightningModule):
 
         return model
 
-    # def pred_to_lvis_format(self, batch, outputs):
-    #     """Get a model prediction in the format for LVIS evaluation. Returns a list of dicts with keys:
-    #     image_id, category_id, bbox, score"""
-    #     formatted = []
-    #     pred_labels = torch.argmax(outputs, dim=-1)
-    #     for i in range(batch["boxes"].shape[0]):
-    #         img_id = batch["img_ids"][i]
-    #         boxes = batch["boxes"][i][: batch["num_masks"][i]].tolist()
-    #         scores = batch["iou_scores"][i][: batch["num_masks"][i]].tolist()
-    #         labels = pred_labels.tolist()
-
-    #         formatted.extend(
-    #             [
-    #                 {
-    #                     "image_id": img_id,
-    #                     "category_id": labels[k],
-    #                     "bbox": box,
-    #                     "score": scores[k],
-    #                 }
-    #                 for k, box in enumerate(boxes)
-    #             ]
-    #         )
-    #         return formatted
-
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="Supervised Mask2Formers")
     parser.add_argument(
         "-c",
         "--checkpoint-dir",
-        # required=True,
         help="Directory to store model checkpoints/",
     )
     parser.add_argument(
         "-l",
         "--log-dir",
-        # required=True,
         help="Directory to store (Tensorboard) logging.",
     )
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
@@ -313,14 +252,10 @@ if __name__ == "__main__":
     model = LitDiscovery(config.device, len(dataloader_train), label_map)
 
     # Trainer callbacks.
-    best_checkpoint_callback = ModelCheckpoint(
-        dirpath=config.checkpoint_dir,
-        save_top_k=1,
-        monitor="map_all",  # TODO: implement evaluation
-        mode="max",
-        filename="best_model_{epoch}",
+    # Save a checkpoint every config.save_every epochs without overwriting the previous checkpoint.
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=config.checkpoint_dir, every_n_epochs=config.save_every, save_top_k=-1
     )
-    checkpoint_callback = ModelCheckpoint(dirpath=config.checkpoint_dir, every_n_epochs=config.save_every)
 
     trainer = pl.Trainer(
         # fast_dev_run=3,
@@ -334,13 +269,12 @@ if __name__ == "__main__":
         enable_checkpointing=True,
         max_epochs=config.epochs,
         callbacks=[
-            best_checkpoint_callback,
             checkpoint_callback,
         ],
     )
 
-    # trainer.fit(model, dataloader_train, dataloader_val)  # FIXME: fix validation step and put val dataloader back
-    trainer.validate(model, dataloader_val)
+    trainer.fit(model, dataloader_train, dataloader_val)  # FIXME: fix validation step and put val dataloader back
+    # trainer.validate(model, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
