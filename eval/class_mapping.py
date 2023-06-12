@@ -1,5 +1,5 @@
 """
-Get the class mapping between discovery class IDs and ground truth class IDs by 
+Get the class mapping between discovery class IDs and ground truth class IDs by
 using the Hungarian algorithm.
 
 Partially copied and adapted from RNCDL:
@@ -21,7 +21,7 @@ class ClassMapper:
     Obtains discovery_id -> GT class_id based on the provided GT annotations and their predictions via solving an
     optimal transport problem.
 
-    Note: GT class_id here is the class_id that D2 provides to the models during training. Usually, those are not real
+    NOTE: this does not apply for my implementation --> Note: GT class_id here is the class_id that D2 provides to the models during training. Usually, those are not real
     GT class ids, but rather them remapped to consecutive numbers.
     """
 
@@ -32,6 +32,7 @@ class ClassMapper:
             max_class_num: a minimum value that can be used as a class ID for novel category that is guaranteed to be
                            higher than the number of known classes; used to assign IDs to novel classes and to avoid
                            IDs overlapping
+            novel_class_id_thresh: maximum value of the ID belonging to an actual GT class.
         """
         self.last_free_class_id = last_free_class_id
         self.max_class_num = max_class_num
@@ -47,7 +48,7 @@ class ClassMapper:
         self.class_mapping = None
 
     def update(self, inputs, outputs):
-        targets = torch.cat([inp["instances"].gt_classes for inp in inputs])
+        targets = torch.cat([target["labels"] for target in inputs["targets"]])
 
         assert targets.shape[0] == outputs.shape[0]
 

@@ -2,7 +2,9 @@ import configs.discovery as config
 from data.datasets.mask_feature_dataset import ImageMaskData, DiscoveryImageMaskData
 from discovery.discovery_model import DiscoveryModel
 from eval.coco_eval import CocoEvaluator
+
 from eval.lvis_eval import LvisEvaluator
+from eval.class_mapping import ClassMapper
 
 import argparse
 import torch
@@ -15,17 +17,24 @@ from utils.warmup_scheduler import WarmUpScheduler
 
 
 class LitDiscovery(pl.LightningModule):
-    """Lightning module for training the discovery network."""
+    """Lightning module for training the discovery network.
+    No discovery validation during training, only supervised validation is done for
+    efficiency's sake. Do discovery validation once after training has completed."""
 
-    def __init__(self, device, len_train_data, label_map):
+    def __init__(self, device, len_train_data, supervis_label_map):
         super().__init__()
         self.len_train_data = len_train_data
         self.model = self.load_model(device)
         self.supervis_evaluator = CocoEvaluator(config.ann_val_labeled, ["bbox"])
-        self.discovery_evaluator = LvisEvaluator(
-            config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids
-        )  # TODO: check if known class IDs are continuous or original IDs
-        self.label_map = label_map  # Label mapping for the labelled dataset.
+        # self.discovery_label_mapper = ClassMapper(
+        #     config.last_free_class_id, config.max_class_num, config.novel_class_id_thresh
+        # )
+        # self.discovery_evaluator = LvisEvaluator(
+        #     config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids
+        # )  # TODO: check if known class IDs are continuous or original IDs
+
+        self.supervis_label_map = supervis_label_map  # Label mapping for the labelled dataset.
+        # self.discovery_preds = []
 
     def training_step(self, batch, batch_idx):
         # FIXME: padding is weird now, since we don't have a bg class anymore
@@ -68,6 +77,11 @@ class LitDiscovery(pl.LightningModule):
 
         return loss
 
+    # def on_validation_epoch_start(self) -> None:
+    #     # Calculate the discovery class mapping by classifying all validation GT boxes.
+    #     # TODO: do a special discovery mapping pass on the GT target boxes to get their classification.
+    #     return super().on_validation_epoch_start()
+
     def validation_step(self, batch, batch_idx, dataloader_idx):
         # Validation datasets are processed sequentially instead of in parallel,
         # so we only have a supervised or unsupervised batch at a time.
@@ -85,7 +99,9 @@ class LitDiscovery(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-            results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, config.num_labeled)
+            results = CocoEvaluator.to_coco_format(
+                batch["img_ids"], outputs, self.supervis_label_map, config.num_labeled
+            )
             self.supervis_evaluator.update(results)
 
         else:  # Unlabeled dataset
@@ -101,10 +117,12 @@ class LitDiscovery(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-            results = LvisEvaluator.to_lvis_format(
-                batch["img_ids"], outputs, self.label_map
-            )  # TODO: label map for LVIS dataset
-            self.discovery_evaluator.update(results)
+            # self.discovery_label_mapper.update(batch, torch.argmax(outputs, dim=-1))
+            # self.discovery_preds.extend(self.pred_to_lvis_format(batch, outputs))
+            # results = LvisEvaluator.to_lvis_format(
+            #     batch["img_ids"], outputs, self.discovery_label_mapper.class_mapping
+            # )  # TODO: label map for LVIS dataset
+            # self.discovery_evaluator.update(results)
 
     def on_validation_epoch_end(self):
         # TODO: Calculate and log evaluation metric over whole dataset
@@ -119,9 +137,16 @@ class LitDiscovery(pl.LightningModule):
         self.supervis_evaluator.reset()
 
         # Evaluator for unlabeled dataset.
-        results = self.discovery_evaluator.summarize()
-        self.log_dict(results["bbox"])
-        self.discovery_evaluator.reset()
+        # self.discovery_label_mapper.get_mapping()
+        # for pred in self.discovery_preds:
+        #     pred["category_id"] = self.discovery_label_mapper.class_mapping[pred["category_id"]]
+        # lvis_eval = LVISEval(config.ann_val_unlabeled, self.discovery_preds, "bbox")
+        # lvis_eval.run()
+        # lvis_eval.print_results()
+        # results = self.discovery_evaluator.summarize()
+        # self.log_dict(results["bbox"])
+        # self.discovery_evaluator.reset()
+        # self.discovery_label_mapper.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -145,6 +170,30 @@ class LitDiscovery(pl.LightningModule):
         model.to(device)
 
         return model
+
+    # def pred_to_lvis_format(self, batch, outputs):
+    #     """Get a model prediction in the format for LVIS evaluation. Returns a list of dicts with keys:
+    #     image_id, category_id, bbox, score"""
+    #     formatted = []
+    #     pred_labels = torch.argmax(outputs, dim=-1)
+    #     for i in range(batch["boxes"].shape[0]):
+    #         img_id = batch["img_ids"][i]
+    #         boxes = batch["boxes"][i][: batch["num_masks"][i]].tolist()
+    #         scores = batch["iou_scores"][i][: batch["num_masks"][i]].tolist()
+    #         labels = pred_labels.tolist()
+
+    #         formatted.extend(
+    #             [
+    #                 {
+    #                     "image_id": img_id,
+    #                     "category_id": labels[k],
+    #                     "bbox": box,
+    #                     "score": scores[k],
+    #                 }
+    #                 for k, box in enumerate(boxes)
+    #             ]
+    #         )
+    #         return formatted
 
 
 def parse_args():
@@ -290,7 +339,8 @@ if __name__ == "__main__":
         ],
     )
 
-    trainer.fit(model, dataloader_train, dataloader_val)  # FIXME: fix validation step and put val dataloader back
+    # trainer.fit(model, dataloader_train, dataloader_val)  # FIXME: fix validation step and put val dataloader back
+    trainer.validate(model, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
