@@ -43,9 +43,9 @@ class DiscoveryModel(nn.Module):
 
     def forward(self, supervised_batch, unsupervised_batch):
         supervised_output = None
-        supervised_loss = {"supervised_loss": 0}
+        supervised_loss = {"supervised_loss": 0.0}
         discovery_output = None
-        discovery_loss = {"discovery_loss": 0}
+        discovery_loss = {"discovery_loss": 0.0}
 
         if supervised_batch is not None:
             supervised_output = self.supervised_model(supervised_batch)
@@ -102,8 +102,11 @@ class DiscoveryModel(nn.Module):
             if key.startswith("model"):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
-        model = SAMRPN(config.num_labeled, config.feature_extractor_ckpt, pad_num=config.pad_num, freeze=True)
+        model = SAMRPN(
+            config.num_labeled, config.feature_extractor_ckpt, pad_num=config.pad_num, trainable_backbone_layers=0
+        )
         model.load_state_dict(model_state_dict)
+        model.freeze()
 
         return model
 

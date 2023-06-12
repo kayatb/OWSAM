@@ -76,9 +76,7 @@ class SAMRPN(nn.Module):
     """Boxes extracted from SAM as ROI proposals (i.e. SAM is RPN), then ROI align on
     the feature map extracted from the whole image, and classification of those ROIs."""
 
-    def __init__(
-        self, num_classes, feature_extractor_ckpt=None, trainable_backbone_layers=5, pad_num=700, freeze=False
-    ):
+    def __init__(self, num_classes, feature_extractor_ckpt=None, trainable_backbone_layers=5, pad_num=700):
         """Args:
         num_classes: number of classes to predict, without the background class
         feature_extractor_ckpt: location of the checkpoint for the feature extractor
@@ -89,7 +87,6 @@ class SAMRPN(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.pad_num = pad_num
-        self.freeze = freeze
 
         box_head_dict = None
         classifier_dict = None
@@ -199,6 +196,17 @@ class SAMRPN(nn.Module):
             "pred_boxes": batch["boxes"],  # Boxes belonging to original image.
             "iou_scores": batch["iou_scores"],  # Used for mAP calculation
         }
+
+    def freeze(self):
+        """Freeze all components but the classifier for discovery training."""
+        for param in self.feature_extractor.parameters():
+            param.requires_grad = False
+
+        for param in self.box_roi_pool.parameters():
+            param.requires_grad = False
+
+        for param in self.box_head.parameters():
+            param.requires_grad = False
 
 
 if __name__ == "__main__":
