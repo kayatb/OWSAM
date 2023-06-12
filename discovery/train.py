@@ -131,7 +131,7 @@ class LitDiscovery(pl.LightningModule):
         return [optimizer], [{"scheduler": warmup_scheduler, "interval": "step"}]
 
     def load_model(self, device):
-        model = DiscoveryModel("checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt")
+        model = DiscoveryModel(config.supervis_ckpt)
         model.to(device)
 
         return model

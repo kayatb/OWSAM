@@ -18,6 +18,7 @@ img_train = "../datasets/coco/train2017"
 img_val = "../datasets/coco/val2017"
 
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
+supervis_ckpt = "checkpoints/rpn_mocov2_resnet50_SGD_0.01lr_50epochs_16bs/best_model_epoch=45.ckpt"
 
 # RNCDL settings
 num_labeled = 80  # + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
