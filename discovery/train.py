@@ -158,10 +158,10 @@ def parse_args():
 def load_data():
     # For using multiple dataloaders, see --> https://lightning.ai/docs/pytorch/latest/data/iterables.html#multiple-dataloaders
     dataset_train_labeled = ImageMaskData(
-        config.masks_dir, config.ann_train_labeled, config.img_train, config.device, train=True, pad_num=config.pad_num
+        config.masks_dir, config.ann_train_labeled, config.img_dir, config.device, train=True, pad_num=config.pad_num
     )
     dataset_val_labeled = ImageMaskData(
-        config.masks_dir, config.ann_val_labeled, config.img_val, config.device, train=False, pad_num=config.pad_num
+        config.masks_dir, config.ann_val_labeled, config.img_dir, config.device, train=False, pad_num=config.pad_num
     )
     dataloader_train_labeled = DataLoader(
         dataset_train_labeled,
@@ -188,7 +188,7 @@ def load_data():
     dataset_train_unlabeled = DiscoveryImageMaskData(
         config.masks_dir,
         config.ann_train_unlabeled,
-        config.img_train,
+        config.img_dir,
         config.device,
         train=True,
         pad_num=config.pad_num,
@@ -197,7 +197,7 @@ def load_data():
     dataset_val_unlabeled = DiscoveryImageMaskData(
         config.masks_dir,
         config.ann_val_unlabeled,
-        config.img_val,
+        config.img_dir,
         config.device,
         train=False,
         pad_num=config.pad_num,

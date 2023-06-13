@@ -172,14 +172,29 @@ class ImageMaskData(MaskData):
         data = super().__getitem__(idx)
 
         # COCO image files have filename img_id prepended with 0's until length is 12.
-        img_file = f"{str(data['img_id']).rjust(12, '0')}.jpg"
-        with Image.open(os.path.join(self.img_dir, img_file)) as img:
+        # img_file = f"{str(data['img_id']).rjust(12, '0')}.jpg"
+        if self.target_mode == "coco":
+            img_dict = self.coco.imgs[data["img_id"]]
+        else:
+            img_dict = self.lvis.imgs[data["img_id"]]
+
+        img_file = self.get_file_name(self.img_dir, img_dict)
+        with Image.open(img_file) as img:
             img = img.convert("RGB")
 
         data["img"] = img
         data["trans_boxes"] = box_xywh_to_xyxy(data["boxes"][: data["num_masks"]])  # Remove padding and convert format.
 
         return data
+
+    # Taken from Detectron2:
+    # https://github.com/facebookresearch/detectron2/blob/main/detectron2/data/datasets/lvis.py#L120
+    def get_file_name(self, img_root, img_dict):
+        # Determine the path including the split folder ("train2017", "val2017", "test2017") from
+        # the coco_url field. Example:
+        #   'coco_url': 'http://images.cocodataset.org/train2017/000000155379.jpg'
+        split_folder, file_name = img_dict["coco_url"].split("/")[-2:]
+        return os.path.join(img_root, split_folder, file_name)
 
     # @staticmethod
     def collate_fn(self, data):

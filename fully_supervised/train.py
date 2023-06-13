@@ -233,20 +233,20 @@ def load_data():
 
     elif config.model_type == "resnet":
         dataset_train = CropMaskData(
-            config.masks_dir, config.ann_train, config.img_train, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_train, config.img_dir, config.device, pad_num=config.pad_num
         )
         dataset_val = CropMaskData(
-            config.masks_dir, config.ann_val, config.img_val, config.device, pad_num=config.pad_num
+            config.masks_dir, config.ann_val, config.img_dir, config.device, pad_num=config.pad_num
         )
         collate_fn_train = CropMaskData.collate_fn
         collate_fn_val = CropMaskData.collate_fn
 
     elif config.model_type == "rpn":
         dataset_train = ImageMaskData(
-            config.masks_dir, config.ann_train, config.img_train, config.device, train=True, pad_num=config.pad_num
+            config.masks_dir, config.ann_train, config.img_dir, config.device, train=True, pad_num=config.pad_num
         )
         dataset_val = ImageMaskData(
-            config.masks_dir, config.ann_val, config.img_val, config.device, train=False, pad_num=config.pad_num
+            config.masks_dir, config.ann_val, config.img_dir, config.device, train=False, pad_num=config.pad_num
         )
         collate_fn_train = dataset_train.collate_fn
         collate_fn_val = dataset_val.collate_fn

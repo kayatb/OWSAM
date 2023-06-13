@@ -8,14 +8,13 @@ end_lr = 1e-3  # Minimum LR for cosine annealing scheduler.
 warmup_steps = 3000
 warmup_start_lr = 1e-5
 
-ann_train_labeled = "../datasets/coco/annotations/instances_train2017.json"
-ann_val_labeled = "../datasets/coco/annotations/instances_val2017.json"
+ann_train_labeled = "../datasets/coco/annotations/coco_half_train.json"
+ann_val_labeled = "../datasets/coco/annotations/coco_half_val.json"
 ann_train_unlabeled = "../datasets/lvis/lvis_v1_train.json"
 ann_val_unlabeled = "../datasets/lvis/lvis_v1_val.json"
 
 masks_dir = "mask_features/all"
-img_train = "../datasets/coco/train2017"
-img_val = "../datasets/coco/val2017"
+img_dir = "../datasets/coco"
 
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 supervis_ckpt = "checkpoints/rpn_mocov2_resnet50_SGD_0.01lr_50epochs_16bs/best_model_epoch=45.ckpt"
@@ -58,6 +57,7 @@ max_class_num = 20000
 last_free_class_id = 10000
 
 # Class IDs of known classes in LVIS dataset, used for evaluation.
+# These IDs are as they occur in the GT annotation of LVIS.
 lvis_known_class_ids = [
     3,
     12,

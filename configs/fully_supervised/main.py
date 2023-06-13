@@ -5,8 +5,7 @@ ann_train = "../datasets/coco/annotations/instances_train2017.json"
 ann_val = "../datasets/coco/annotations/instances_val2017.json"
 # ann_val = "../datasets/lvis/lvis_v1_val.json"
 masks_dir = "mask_features/all"
-img_train = "../datasets/coco/train2017"
-img_val = "../datasets/coco/val2017"
+img_dir = "../datasets/coco"
 
 num_classes = 80
 num_workers = 12

@@ -222,9 +222,8 @@ if __name__ == "__main__":
 
     # Load the data
     dataset_val_labeled = ImageMaskData(
-        config.masks_dir, config.ann_val_labeled, config.img_val, config.device, train=False, pad_num=config.pad_num
+        config.masks_dir, config.ann_val_labeled, config.img_dir, config.device, train=False, pad_num=config.pad_num
     )
-    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:10]
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
         batch_size=config.batch_size,
@@ -239,13 +238,12 @@ if __name__ == "__main__":
     dataset_val_unlabeled = DiscoveryImageMaskData(
         config.masks_dir,
         config.ann_val_unlabeled,
-        config.img_val,
+        config.img_dir,
         config.device,
         train=False,
         pad_num=config.pad_num,
         num_views=config.num_views,
     )
-    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:10]
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
         batch_size=config.batch_size,
