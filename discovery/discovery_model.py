@@ -9,6 +9,21 @@ import torch
 import torch.nn as nn
 
 
+# class ForwardMode:
+#     SUPERVISED_TRAIN = 0
+#     UNSUPERVISED_TRAIN = 1
+#     SUPERVISED_GT_PRED = 3
+#     UNSUPERVISED_GT_PRED = 4
+
+# SUPERVISED_TRAIN = 0
+# SUPERVISED_INFERENCE = 1
+# PROPOSALS_EXTRACTION = 2
+# DISCOVERY_FEATURE_EXTRACTION = 3
+# DISCOVERY_CLASSIFIER = 4
+# DISCOVERY_GT_CLASS_PREDICTIONS_EXTRACTION = 5
+# DISCOVERY_INFERENCE = 6
+
+
 class DiscoveryModel(nn.Module):
     def __init__(self, supervised_ckpt):
         super().__init__()
@@ -90,6 +105,25 @@ class DiscoveryModel(nn.Module):
         loss = supervised_loss["supervised_loss"] * self.supervised_loss_lambda + discovery_loss["discovery_loss"]
 
         return loss, supervised_loss, discovery_loss, supervised_output, discovery_output
+
+    @torch.no_grad()
+    def extract_gt_preds(self, batch):
+        """Extract predictions for the GT boxes and for the predicted boxes."""
+        target_boxes = [t["boxes"] for t in batch["targets"]]
+        img_feats = self.supervised_model.feature_extractor(batch["images"])
+        img_shapes = [img.shape for img in batch["images"]]
+
+        preds = []
+        for boxes in [batch["trans_boxes"], target_boxes]:
+            roi_feats = self.supervised_model.box_roi_pool(img_feats, boxes, img_shapes)
+            roi_feats = self.supervised_model.box_head(roi_feats)
+
+            logits = self.discovery_model.forward_heads_single_view(roi_feats)
+            preds.append(torch.argmax(logits, dim=-1))
+
+            assert len(preds[-1] == len(boxes))
+
+        return preds[0], preds[1]  # predictions, GT
 
     def load_supervised_model(self, ckpt_path):
         """Load the pre-trained supervised classification head."""

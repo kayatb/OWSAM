@@ -39,8 +39,8 @@ class ClassMapper:
         self.max_class_num = max_class_num
         self.novel_class_id_thresh = novel_class_id_thresh
 
-        self.targets_all = None
-        self.predictions_all = None
+        self.targets_all = []
+        self.predictions_all = []
         self.class_mapping = None
 
     def reset(self):
@@ -80,18 +80,19 @@ class ClassMapper:
             last_free_class_id=self.last_free_class_id,
             max_class_num=self.max_class_num,
         )
-        class_mapping = np.array(class_mapping).astype(np.int)
-        self.class_mapping = dict(torch.from_numpy(class_mapping).cuda())
+        class_mapping = np.array(class_mapping).astype(int)
+        # self.class_mapping = dict(torch.from_numpy(class_mapping).cuda())
+        self.class_mapping = dict(class_mapping)
 
-    def map_predictions(self, predictions):
-        # Remap predicted classes and filter out predictions of novel categories
-        predictions_mapped = []
-        for pred in predictions:
-            pred["category_id"] = self.class_mapping[pred["category_id"]]
-            if pred["category_id"] < self.novel_class_id_thresh:
-                predictions_mapped.append(pred)
+    # def map_predictions(self, predictions):
+    #     # Remap predicted classes and filter out predictions of novel categories
+    #     predictions_mapped = []
+    #     for pred in predictions:
+    #         pred["category_id"] = self.class_mapping[pred["category_id"]]
+    #         if pred["category_id"] < self.novel_class_id_thresh:
+    #             predictions_mapped.append(pred)
 
-        return predictions_mapped
+    #     return predictions_mapped
 
 
 def cluster_map(y_true, y_pred, last_free_class_id, max_class_num):
@@ -150,24 +151,28 @@ class DiscoveryEvaluator:
         Args:
             batch: the batch with the data to run the model on.
             is_supervis: boolean to signify whether the batch comes from the supervised or unsupervised dataset."""
-        # TODO: make a mode where the model uses the GT boxes instead of SAM boxes.
-        if is_supervis:
-            with torch.no_grad():
-                _, _, _, outputs, _ = self.model(supervised_batch=batch, unsupervised_batch=None)
-        else:
-            with torch.no_grad():
-                _, _, _, _, outputs = self.model(supervised_batch=None, unsupervised_batch=batch)
-            self.unsupervis_preds.extend(
-                self.pred_to_lvis_format(batch, outputs)
-            )  # TODO: make separate outputs for GT and SAM boxes
+        # Move data to device
+        batch["images"] = batch["images"].to(config.device)
+        batch["trans_boxes"] = [box.to(config.device) for box in batch["trans_boxes"]]
+        batch["targets"] = [{"labels": t["labels"], "boxes": t["boxes"].to(config.device)} for t in batch["targets"]]
 
-        self.class_mapper.update(batch, outputs)
+        # Get outputs from the model.
+        outputs, outputs_gt = self.model.extract_gt_preds(batch)
+
+        # Save predictions from the unsupervised dataset.
+        if not is_supervis:
+            self.unsupervis_preds.extend(self.pred_to_lvis_format(batch, outputs))
+
+        self.class_mapper.update(batch, outputs_gt)
 
     def evaluate(self):
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
+        self.class_mapper.get_mapping()
+        print(self.class_mapper.class_mapping)
         mapped_preds = []
-        for pred in self.unsupervis_preds:
+        for pred in tqdm(self.unsupervis_preds):
+            print(pred)
             pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"]]
             # FIXME: might need to map from continuous IDs to GT IDs
             # Filter out predictions of novel categories (i.e. not mapped to a GT category).
@@ -189,12 +194,12 @@ class DiscoveryEvaluator:
         """Get a model prediction in the format for LVIS evaluation. Returns a list of dicts with keys:
         image_id, category_id, bbox, score"""
         formatted = []
-        pred_labels = torch.argmax(outputs, dim=-1)
+        # pred_labels = torch.argmax(outputs, dim=-1)
         for i in range(batch["boxes"].shape[0]):
             img_id = batch["img_ids"][i]
             boxes = batch["boxes"][i][: batch["num_masks"][i]].tolist()
             scores = batch["iou_scores"][i][: batch["num_masks"][i]].tolist()
-            labels = pred_labels.tolist()
+            labels = outputs.tolist()
 
             formatted.extend(
                 [
@@ -211,12 +216,15 @@ class DiscoveryEvaluator:
 
 
 if __name__ == "__main__":
+    device = "cuda"
     model = DiscoveryModel(config.supervis_ckpt)
+    model.to(config.device)
 
     # Load the data
     dataset_val_labeled = ImageMaskData(
         config.masks_dir, config.ann_val_labeled, config.img_val, config.device, train=False, pad_num=config.pad_num
     )
+    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:10]
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
         batch_size=config.batch_size,
@@ -237,6 +245,7 @@ if __name__ == "__main__":
         pad_num=config.pad_num,
         num_views=config.num_views,
     )
+    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:10]
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
         batch_size=config.batch_size,
