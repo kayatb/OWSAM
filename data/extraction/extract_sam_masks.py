@@ -1,5 +1,5 @@
-from data.img_embeds_dataset import ImageEmbeds
-from data.image_dataset import ImageDataset
+from data.datasets.img_embeds_dataset import ImageEmbeds
+from data.datasets.image_dataset import ImageDataset
 from modelling.sam_mask_generator import OWSamMaskGenerator
 
 from segment_anything import sam_model_registry
@@ -104,7 +104,9 @@ if __name__ == "__main__":
 
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
 
-    mask_generator = OWSamMaskGenerator(sam)
+    mask_generator = OWSamMaskGenerator(
+        sam, points_per_side=32, pred_iou_thresh=0, stability_score_thresh=0, box_nms_thresh=1.0
+    )
     sam.to(device=device)  # Should be done after the decoder has been changed by the mask generator
 
     if args.embed_dir:
