@@ -11,7 +11,7 @@ from PIL import Image
 class ImageData(torch.utils.data.Dataset):
     """Load the pre-extracted masks and their features into a torch Dataset."""
 
-    def __init__(self, feature_dir, img_dir, ann_file, device):
+    def __init__(self, feature_dir, ann_file, img_dir, device):
         """Load the masks and their features from `dir`."""
         self.feature_dir = feature_dir
         self.img_dir = img_dir

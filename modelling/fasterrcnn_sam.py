@@ -264,7 +264,6 @@ class RegionProposalNetworkSAM(nn.Module):
 
     # TODO: implement this if necessary
     def filter_proposals(self, proposals, scores):
-        print("WARNING: calling RPN without any filtering of the proposals.")
         return proposals, scores
 
     def forward(self, proposals, scores):

@@ -1,5 +1,6 @@
 from data.datasets.mask_feature_dataset import CropMaskData, CropFeatureMaskData, ImageMaskData
-from fully_supervised.model import LinearClassifier, ResNetClassifier, SAMRPN
+from data.datasets.fasterrcnn_data import ImageData
+from fully_supervised.model import LinearClassifier, ResNetClassifier, SAMRPN, SAMFasterRCNN
 from eval.coco_eval import CocoEvaluator
 
 from modelling.criterion import SetCriterion
@@ -26,7 +27,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.len_train_data = len_train_data  # Length of the train data. Necessary for warm-up scheduler.
 
         self.model = self.load_model(device)
-        self.criterion = self.set_criterion(device)
+        if config.model_type != "fasterrcnn":
+            self.criterion = self.set_criterion(device)
         self.evaluator = CocoEvaluator(config.ann_val, ["bbox"])
         # self.evaluator.coco_eval["bbox"].params.useCats = 0  # For calculating object vs no-object mAP
 
@@ -36,6 +38,10 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             batch["crop_features"] = mixed_features
             outputs = self.model(batch)
             loss = self.criterion(outputs, mixed_targets, use_mixup=True, num_masks=batch["num_masks"])
+
+        elif config.model_type == "fasterrcnn":
+            loss_dict = self.model(batch)
+            loss = sum(loss for loss in loss_dict.values())
 
         else:
             outputs = self.model(batch)
@@ -51,15 +57,21 @@ class LitFullySupervisedClassifier(pl.LightningModule):
                 logger=True,
             )
 
-        self.log(
-            "train_loss_ce",
-            loss["loss"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        if config.model_type != "fasterrcnn":
+            self.log(
+                "train_loss_ce",
+                loss["loss"].item(),
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+        else:
+            loss_dict = {"train_" + k: v for k, v in loss_dict.items()}
+            self.log_dict(
+                loss_dict, batch_size=len(batch["sam_boxes"]), on_step=False, on_epoch=True, prog_bar=True, logger=True
+            )
 
         return loss
 
@@ -99,7 +111,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
         self.evaluator.reset()
 
     def configure_optimizers(self):
-        if config.model_type == "rpn":
+        if config.model_type == "rpn" or config.model_type == "fasterrcnn":
             optimizer = torch.optim.SGD(
                 self.parameters(), lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay
             )
@@ -126,6 +138,8 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             model = ResNetClassifier(config.num_classes, config.pad_num)
         elif config.model_type == "rpn":
             model = SAMRPN(config.num_classes, config.feature_extractor_ckpt, pad_num=config.pad_num)
+        elif config.model_type == "fasterrcnn":
+            model = SAMFasterRCNN(config.num_classes, config.feature_extractor_ckpt)
         else:
             raise ValueError(f"Unknown model type `{type}` given.")
         model.to(device)
@@ -211,7 +225,7 @@ def parse_args():
         "-m",
         "--model-type",
         required=True,
-        choices=["mlp", "resnet", "rpn"],
+        choices=["mlp", "resnet", "rpn", "fasterrcnn"],
         help="Which model to train (i.e. which config to use).",
     )
     parser.add_argument("-n", "--num-gpus", type=int, help="Number of GPUs to use.")
@@ -251,6 +265,13 @@ def load_data():
         collate_fn_train = dataset_train.collate_fn
         collate_fn_val = dataset_val.collate_fn
 
+    elif config.model_type == "fasterrcnn":
+        dataset_train = ImageData(config.masks_dir, config.ann_train, config.img_dir, config.device)
+        dataset_val = ImageData(config.masks_dir, config.ann_val, config.img_dir, config.device)
+
+        collate_fn_train = ImageData.collate_fn
+        collate_fn_val = ImageData.collate_fn
+
     else:
         raise ValueError(f"Unknown model_type `{config.model_type}` given.")
 
@@ -288,6 +309,8 @@ if __name__ == "__main__":
         import configs.fully_supervised.resnet_crops as config
     elif args.model_type == "rpn":
         import configs.fully_supervised.rpn as config
+    elif args.model_type == "fasterrcnn":
+        import configs.fully_supervised.fasterrcnn as config
     else:
         raise ValueError(f"Unkown model_type `{args.model_type}` given as cmd argument.")
 
@@ -319,7 +342,7 @@ if __name__ == "__main__":
     # https://lightning.ai/docs/pytorch/1.5.7/advanced/mixed_precision.html
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
+        # limit_train_batches=0.0001,  # FIXME: remove this for actual training!
         # limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
@@ -334,11 +357,11 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    # trainer.fit(model, dataloader_train, dataloader_val)
+    trainer.fit(model, dataloader_train)  # , dataloader_val)
 
-    model = LitFullySupervisedClassifier.load_from_checkpoint(
-        "checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt",
-        device=config.device,
-        label_map=label_map,
-    )
-    trainer.validate(model, dataloader_val)
+    # model = LitFullySupervisedClassifier.load_from_checkpoint(
+    #     "checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt",
+    #     device=config.device,
+    #     label_map=label_map,
+    # )
+    # trainer.validate(model, dataloader_val)
