@@ -130,17 +130,17 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             size = float(self.min_size[-1])
         image, target = _resize_image_and_masks(image, size, float(self.max_size), target, self.fixed_size)
 
-        if target is None:  # TODO: move this
-            return image, target
+        bbox = sam_boxes
+        bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
+        sam_boxes = bbox
+
+        if target is None:
+            return image, sam_boxes, target
 
         # Resize the target boxes and SAM boxes.
         bbox = target["boxes"]
         bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
         target["boxes"] = bbox
-
-        bbox = sam_boxes
-        bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
-        sam_boxes = bbox
 
         return image, sam_boxes, target
 
@@ -329,17 +329,17 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
                         f" Found invalid box {degen_bb} for target at index {target_idx}.",
                     )
 
-            for boxes_idx, boxes in enumerate(sam_boxes):
-                degenerate_boxes = boxes[:, 2:] <= boxes[:, :2]
-                if degenerate_boxes.any():
-                    # print the first degenerate box
-                    bb_idx = torch.where(degenerate_boxes.any(dim=1))[0][0]
-                    degen_bb: List[float] = boxes[bb_idx].tolist()
-                    torch._assert(
-                        False,
-                        "All bounding boxes should have positive height and width."
-                        f" Found invalid box {degen_bb} for target at index {boxes_idx}. {batch['img_ids'][boxes_idx]}",
-                    )
+        for boxes_idx, boxes in enumerate(sam_boxes):
+            degenerate_boxes = boxes[:, 2:] <= boxes[:, :2]
+            if degenerate_boxes.any():
+                # print the first degenerate box
+                bb_idx = torch.where(degenerate_boxes.any(dim=1))[0][0]
+                degen_bb: List[float] = boxes[bb_idx].tolist()
+                torch._assert(
+                    False,
+                    "All bounding boxes should have positive height and width."
+                    f" Found invalid box {degen_bb} for target at index {boxes_idx}. {batch['img_ids'][boxes_idx]}",
+                )
 
         features = self.backbone(images.tensors)
         if isinstance(features, torch.Tensor):
