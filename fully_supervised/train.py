@@ -77,28 +77,32 @@ class LitFullySupervisedClassifier(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         outputs = self.model(batch)
-        loss = self.criterion(outputs, batch["targets"])
 
-        self.log(
-            "val_class_error",
-            loss["class_error"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        self.log(
-            "val_loss_ce",
-            loss["loss"].item(),
-            batch_size=len(batch["boxes"]),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        if config.model_type != "fasterrcnn":
+            loss = self.criterion(outputs, batch["targets"])
 
-        results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, self.model.num_classes)
+            self.log(
+                "val_class_error",
+                loss["class_error"].item(),
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            self.log(
+                "val_loss_ce",
+                loss["loss"].item(),
+                batch_size=len(batch["boxes"]),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+
+            results = CocoEvaluator.to_coco_format(batch["img_ids"], outputs, self.label_map, self.model.num_classes)
+        else:
+            results = CocoEvaluator.to_coco_format_fasterrcnn(batch["img_ids"], outputs, self.label_map)
         self.evaluator.update(results)
 
     def on_validation_epoch_end(self):
@@ -342,7 +346,7 @@ if __name__ == "__main__":
     # https://lightning.ai/docs/pytorch/1.5.7/advanced/mixed_precision.html
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        # limit_train_batches=0.0001,  # FIXME: remove this for actual training!
+        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
         # limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
@@ -357,7 +361,7 @@ if __name__ == "__main__":
         # profiler="simple",
     )
 
-    trainer.fit(model, dataloader_train)  # , dataloader_val)
+    trainer.fit(model, dataloader_train, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt",

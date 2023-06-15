@@ -10,6 +10,8 @@ Mostly copy-paste from https://github.com/pytorch/vision/blob/edfd5a7/references
 The difference is that there is less copy-pasting from pycocotools
 in the end of the file, as python3 can suppress prints with contextlib
 """
+from utils.misc import all_gather, box_xyxy_to_xywh
+
 import os
 import contextlib
 import copy
@@ -19,8 +21,6 @@ import torch
 from pycocotools.cocoeval import COCOeval
 from pycocotools.coco import COCO
 import pycocotools.mask as mask_util
-
-from utils.misc import all_gather
 
 
 class CocoEvaluator(object):
@@ -180,6 +180,23 @@ class CocoEvaluator(object):
             labels = labels.cpu().apply_(label_map.get)  # Map the continous labels back to original ones from COCO
 
             results[img_ids[i]] = {"boxes": concat[:, 2:], "scores": concat[:, 1], "labels": labels}
+
+        return results
+
+    @staticmethod
+    def to_coco_format_fasterrcnn(img_ids, outputs, label_map):
+        results = {}
+
+        for i in range(len(img_ids)):
+            outputs[i]["labels"] = (
+                outputs[i]["labels"].cpu().apply_(label_map.get)
+            )  # Map the continous labels back to original ones from COCO
+
+            results[img_ids[i]] = {
+                "boxes": box_xyxy_to_xywh(outputs[i]["boxes"]),
+                "scores": outputs[i]["scores"],
+                "labels": outputs[i]["labels"],
+            }
 
         return results
 

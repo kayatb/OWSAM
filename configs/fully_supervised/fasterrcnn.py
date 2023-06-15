@@ -27,7 +27,7 @@ dir = f"rpn_mocov2_resnet50_SGD_{lr}lr_{epochs}epochs_{batch_size}bs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"
 
-num_classes = 81
+num_classes = 81  # Includes the background class.
 
 # RNCDL settings:
 # augmentations:
