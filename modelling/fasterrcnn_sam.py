@@ -429,7 +429,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         rpn = RegionProposalNetworkSAM(rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh, rpn_score_thresh)
 
         if box_roi_pool is None:
-            box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+            box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=0)
 
         if box_head is None:
             resolution = box_roi_pool.output_size[0]
