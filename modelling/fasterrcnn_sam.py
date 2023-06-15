@@ -14,23 +14,18 @@ from utils.misc import box_xywh_to_xyxy
 
 import torch
 from torch import nn, Tensor
-import torchvision
+from torchvision.transforms import functional as F
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 from torchvision.models.detection.roi_heads import RoIHeads
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.ops import MultiScaleRoIAlign
 from torchvision.models.detection.faster_rcnn import TwoMLPHead
-from torchvision.models.detection.rpn import concat_box_prediction_layers, RegionProposalNetwork
 from torchvision.models.detection.image_list import ImageList
-import torchvision.models.detection._utils as det_utils
 from torchvision.models.detection.transform import _resize_image_and_masks, resize_boxes
-from torchvision.utils import _log_api_usage_once
-from torchvision.ops import boxes as box_ops
 import warnings
 from collections import OrderedDict
-from typing import Tuple, List, Dict, Optional, Union, Any
-import math
+from typing import Tuple, List, Dict, Optional
 
 
 class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
@@ -96,6 +91,7 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
                 raise ValueError(f"images is expected to be a list of 3d tensors of shape [C, H, W], got {image.shape}")
             image = self.normalize(image)
             image, sam_index, target_index = self.resize(image, sam_index, target_index)
+            image, sam_index, target_index = self.horizontal_flip(image, sam_index, target_index)
             images[i] = image
             sam_boxes[i] = sam_index
             if targets is not None and target_index is not None:
@@ -141,6 +137,20 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
         bbox = target["boxes"]
         bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
         target["boxes"] = bbox
+
+        return image, sam_boxes, target
+
+    def horizontal_flip(self, image, sam_boxes, target=None, p=0.5):
+        """Do a horizontal flip if in training mode with probability p. Otherwise, do nothing."""
+        if not self.training or torch.rand(1) >= p:
+            return image, sam_boxes, target
+
+        image = F.hflip(image)
+        _, _, width = F.get_dimensions(image)
+        sam_boxes[:, [0, 2]] = width - sam_boxes[:, [2, 0]]
+
+        if target is not None:
+            target["boxes"][:, [0, 2]] = width - target["boxes"][:, [2, 0]]
 
         return image, sam_boxes, target
 
@@ -193,16 +203,16 @@ class RegionProposalNetworkSAM(nn.Module):
         self.score_thresh = score_thresh
         self.min_size = 1e-3
 
-    def _get_top_n_idx(self, objectness: Tensor, num_anchors_per_level: List[int]) -> Tensor:
-        r = []
-        offset = 0
-        for ob in objectness.split(num_anchors_per_level, 1):
-            num_anchors = ob.shape[1]
-            pre_nms_top_n = det_utils._topk_min(ob, self.pre_nms_top_n(), 1)
-            _, top_n_idx = ob.topk(pre_nms_top_n, dim=1)
-            r.append(top_n_idx + offset)
-            offset += num_anchors
-        return torch.cat(r, dim=1)
+    # def _get_top_n_idx(self, objectness: Tensor, num_anchors_per_level: List[int]) -> Tensor:
+    #     r = []
+    #     offset = 0
+    #     for ob in objectness.split(num_anchors_per_level, 1):
+    #         num_anchors = ob.shape[1]
+    #         pre_nms_top_n = det_utils._topk_min(ob, self.pre_nms_top_n(), 1)
+    #         _, top_n_idx = ob.topk(pre_nms_top_n, dim=1)
+    #         r.append(top_n_idx + offset)
+    #         offset += num_anchors
+    #     return torch.cat(r, dim=1)
 
     # def filter_proposals(
     #     self,
@@ -252,7 +262,7 @@ class RegionProposalNetworkSAM(nn.Module):
     #         final_scores.append(scores)
     #     return final_boxes, final_scores
 
-    # TODO: implement this.
+    # TODO: implement this if necessary
     def filter_proposals(self, proposals, scores):
         print("WARNING: calling RPN without any filtering of the proposals.")
         return proposals, scores
