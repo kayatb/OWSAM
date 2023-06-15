@@ -1,6 +1,7 @@
 from utils.misc import filter_empty_imgs, box_xywh_to_xyxy
 
 import torch
+from torchvision.transforms.functional import to_tensor
 import os
 from pycocotools.coco import COCO
 from lvis import LVIS
@@ -52,13 +53,14 @@ class ImageData(torch.utils.data.Dataset):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),
         and the targets (class labels and segmentation masks) from the COCO dataset."""
         if self.target_mode == "coco":
-            img_dict = self.coco.imgs[data["img_id"]]
+            img_dict = self.coco.imgs[self.img_ids[idx]]
         else:
-            img_dict = self.lvis.imgs[data["img_id"]]
+            img_dict = self.lvis.imgs[self.img_ids[idx]]
 
         img_file = self.get_file_name(self.img_dir, img_dict)
         with Image.open(img_file) as img:
             img = img.convert("RGB")
+        img = to_tensor(img)  # Convert PIL image to Tensor in range [0.0, 1.0]
 
         file_path = os.path.join(self.feature_dir, f"{self.img_ids[idx]}.pt")
         # mask_data is a list of dicts (one dict per predicted mask in the image), where each dict has the following
@@ -130,9 +132,9 @@ class ImageData(torch.utils.data.Dataset):
 
     @staticmethod
     def collate_fn(data):
-        images = [d["img"] for d in data]
+        images = [d["image"] for d in data]
         sam_boxes = [d["sam_boxes"] for d in data]
-        iou_scores = [d["iou_score"] for d in data]
+        iou_scores = [d["iou_scores"] for d in data]
         # boxes = torch.stack([d["boxes"] for d in data])
         # iou_scores = torch.stack([d["iou_scores"] for d in data])
         img_ids = [d["img_id"] for d in data]

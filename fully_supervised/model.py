@@ -1,4 +1,5 @@
 from utils.misc import add_padding, box_xywh_to_xyxy
+from modelling.fasterrcnn_sam import FasterRCNNSAM
 
 import torch
 import torch.nn as nn
@@ -209,36 +210,68 @@ class SAMRPN(nn.Module):
             param.requires_grad = False
 
 
+def load_resnet50_fpn_with_moco(checkpoint_path, trainable_backbone_layers):
+    moco_checkpoint = torch.load(checkpoint_path)
+
+    # Rename MoCo pre-trained keys (taken from official MoCo repo):
+    # https://github.com/facebookresearch/moco/blob/5a429c00bb6d4efdf511bf31b6f01e064bf929ab/main_lincls.py#L250
+    state_dict = moco_checkpoint["state_dict"]
+    for k in list(state_dict.keys()):
+        # Retain only encoder_q up to before the embedding layer.
+        if k.startswith("module.encoder_q") and not k.startswith("module.encoder_q.fc"):
+            # Remove prefix.
+            state_dict[k[len("module.encoder_q.") :]] = state_dict[k]
+        # Delete renamed or unused k.
+        del state_dict[k]
+
+    backbone = resnet50(weights=None)
+    # Change the last ResNet block strides from (2, 2) to (1, 1)
+    # to increase the output feature map from 14x14 to 28x28.
+    backbone.layer4[0].downsample[0] = nn.Conv2d(1024, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+    backbone.layer4[0].conv2 = nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+    # Load the weights into ResNet-50
+    backbone.load_state_dict(state_dict, strict=False)
+
+    # Turn it into an FPN feature extractor.
+    feature_extractor = _resnet_fpn_extractor(
+        backbone, trainable_layers=trainable_backbone_layers, norm_layer=nn.BatchNorm2d
+    )
+
+    return feature_extractor
+
+
+def SAMFasterRCNN(num_classes, checkpoint_path, trainable_backbone_layers=5):
+    backbone = load_resnet50_fpn_with_moco(checkpoint_path, trainable_backbone_layers)
+    model = FasterRCNNSAM(backbone, num_classes, min_size=[640, 672, 704, 736, 768, 800], max_size=1333)
+
+    return model
+
+
 if __name__ == "__main__":
-    from data.datasets.mask_feature_dataset import ImageMaskData
+    from data.datasets.fasterrcnn_data import ImageData
     from tqdm import tqdm
     from torchvision.models.detection import fasterrcnn_resnet50_fpn
     from torch.hub import load_state_dict_from_url
 
-    state_dict = load_state_dict_from_url(
-        "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth", progress=True
-    )
-
     device = "cpu"
 
-    dataset = ImageMaskData(
-        "mask_features/all",
+    dataset = ImageData(
+        "mask_features/val_32",
+        "../datasets/coco",
         "../datasets/coco/annotations/instances_val2017.json",
-        "../datasets/coco/val2017",
-        "cpu",
-        train=True,
+        device,
+        32 * 32 * 3,
     )
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=dataset.collate_fn)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageData.collate_fn)
 
-    model = SAMRPN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")  # For MoCo weights.
+    model = SAMFasterRCNN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
     # model = SAMRPN(90)  # For pre-trained faster_r_cnn weights
 
     # model = fasterrcnn_resnet50_fpn()
     model.to(device)
     # model.load_state_dict(state_dict)
-    model.eval()
+    # model.eval()
 
     for batch in tqdm(dataloader):
-        output = model(batch["images"])
-        print(output)
-        break
+        losses = model(batch)
+        print(losses)

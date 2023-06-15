@@ -10,6 +10,7 @@ SAM as RPN options:
 
     - Faster R-CNN does post-processing NMS per class to remove duplicate/redundant bboxes.
 """
+from utils.misc import box_xywh_to_xyxy
 
 import torch
 from torch import nn, Tensor
@@ -80,8 +81,10 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             targets_copy: List[Dict[str, Tensor]] = []
             for t in targets:
                 data: Dict[str, Tensor] = {}
-                for k, v in t.items():
-                    data[k] = v
+                # for k, v in t.items():
+                #     data[k] = v
+                data["labels"] = t["labels"]
+                data["boxes"] = box_xywh_to_xyxy(t["boxes"])  # Conver boxes to format expected by Faster R-CNN.
                 targets_copy.append(data)
             targets = targets_copy
         for i in range(len(images)):
@@ -127,7 +130,7 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             size = float(self.min_size[-1])
         image, target = _resize_image_and_masks(image, size, float(self.max_size), target, self.fixed_size)
 
-        if target is None:
+        if target is None:  # TODO: move this
             return image, target
 
         # Resize the target boxes and SAM boxes.
@@ -160,7 +163,7 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
         return result
 
 
-class RegionProposalNetworkSAM(RegionProposalNetwork):
+class RegionProposalNetworkSAM(nn.Module):
     """
     Implements Region Proposal Network (RPN).
 
@@ -183,6 +186,7 @@ class RegionProposalNetworkSAM(RegionProposalNetwork):
         nms_thresh: float,
         score_thresh: float = 0.0,
     ) -> None:
+        super().__init__()
         self._pre_nms_top_n = pre_nms_top_n
         self._post_nms_top_n = post_nms_top_n
         self.nms_thresh = nms_thresh
@@ -249,16 +253,14 @@ class RegionProposalNetworkSAM(RegionProposalNetwork):
     #     return final_boxes, final_scores
 
     # TODO: implement this.
-    def filter_proposals(proposals, scores):
+    def filter_proposals(self, proposals, scores):
         print("WARNING: calling RPN without any filtering of the proposals.")
         return proposals, scores
 
-    def forward(self, batch):
-        proposals = batch["trans_boxes"]
-        scores = batch["iou_scores"]
+    def forward(self, proposals, scores):
         boxes, scores = self.filter_proposals(proposals, scores)  # , images.image_sizes, num_anchors_per_level)
 
-        return boxes
+        return boxes, scores
 
 
 class GeneralizedRCNNSAM(GeneralizedRCNN):
@@ -330,7 +332,7 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
         features = self.backbone(images.tensors)
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])
-        proposals, scores = self.rpn(sam_boxes)
+        proposals, scores = self.rpn(sam_boxes, batch["iou_scores"])
         detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
         detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
 
