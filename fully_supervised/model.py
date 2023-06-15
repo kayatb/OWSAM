@@ -260,14 +260,18 @@ if __name__ == "__main__":
         "../datasets/coco",
         "../datasets/coco/annotations/instances_val2017.json",
         device,
-        32 * 32 * 3,
     )
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageData.collate_fn)
 
-    model = SAMFasterRCNN(80, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
+    # Num classes should include background
+    # ID 0 is reserved for background, so class IDs should start from 1.
+    model = SAMFasterRCNN(81, "checkpoints/moco_v2_800ep_pretrain.pth.tar")
     # model = SAMRPN(90)  # For pre-trained faster_r_cnn weights
 
     # model = fasterrcnn_resnet50_fpn()
+    # url = "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth"
+    # state_dict = torch.hub.load_state_dict_from_url(url, progress=True)
+    # model.load_state_dict(state_dict)
     model.to(device)
     # model.load_state_dict(state_dict)
     # model.eval()

@@ -98,15 +98,15 @@ def crop_bboxes_from_img(img, boxes):
     return crops
 
 
-def box_xywh_to_xyxy(x):
-    x, y, w, h = x.unbind(-1)
+def box_xywh_to_xyxy(box):
+    x, y, w, h = box.unbind(-1)
     b = [x, y, (x + w), (y + h)]
 
     return torch.stack(b, dim=-1)
 
 
-def box_xyxy_to_xywh(x):
-    xmin, ymin, xmax, ymax = x.unbind(-1)
+def box_xyxy_to_xywh(box):
+    xmin, ymin, xmax, ymax = box.unbind(-1)
     b = [xmin, ymin, xmax - xmin, ymax - ymin]
 
     return torch.stack(b, dim=-1)

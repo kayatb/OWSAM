@@ -329,6 +329,18 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
                         f" Found invalid box {degen_bb} for target at index {target_idx}.",
                     )
 
+            for boxes_idx, boxes in enumerate(sam_boxes):
+                degenerate_boxes = boxes[:, 2:] <= boxes[:, :2]
+                if degenerate_boxes.any():
+                    # print the first degenerate box
+                    bb_idx = torch.where(degenerate_boxes.any(dim=1))[0][0]
+                    degen_bb: List[float] = boxes[bb_idx].tolist()
+                    torch._assert(
+                        False,
+                        "All bounding boxes should have positive height and width."
+                        f" Found invalid box {degen_bb} for target at index {boxes_idx}. {batch['img_ids'][boxes_idx]}",
+                    )
+
         features = self.backbone(images.tensors)
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])

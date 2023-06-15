@@ -11,13 +11,13 @@ from PIL import Image
 class ImageData(torch.utils.data.Dataset):
     """Load the pre-extracted masks and their features into a torch Dataset."""
 
-    def __init__(self, feature_dir, img_dir, ann_file, device, num_masks):
+    def __init__(self, feature_dir, img_dir, ann_file, device):
         """Load the masks and their features from `dir`."""
         self.feature_dir = feature_dir
         self.img_dir = img_dir
 
         self.device = device
-        self.num_masks = num_masks
+        # self.num_masks = num_masks
 
         # Create a mapping from category ID to category name.
         self.cat_id_to_name = {}
@@ -46,8 +46,8 @@ class ImageData(torch.utils.data.Dataset):
         self.cat_id_to_continuous = {}
         self.continuous_to_cat_id = {}
         for i, id in enumerate(self.cat_id_to_name.keys()):
-            self.cat_id_to_continuous[id] = i  # Start the classes at 0. The last index is reserved for no-object class.
-            self.continuous_to_cat_id[i] = id
+            self.cat_id_to_continuous[id] = i + 1  # Start the classes at 1. ID 0 is reserved for no-object class.
+            self.continuous_to_cat_id[i + 1] = id
 
     def __getitem__(self, idx):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),
@@ -69,14 +69,21 @@ class ImageData(torch.utils.data.Dataset):
 
         targets = self.get_targets(self.img_ids[idx])
 
-        boxes = torch.zeros((self.num_masks, 4))
-        iou_scores = -torch.ones((self.num_masks))
+        # boxes = torch.zeros((self.num_masks, 4))
+        boxes = []
+        iou_scores = []
+        # iou_scores = -torch.ones((self.num_masks))
 
-        for i, mask in enumerate(mask_data):
-            # if mask["bbox"][2] == 0 or mask["bbox"][3] == 0:  # Skip boxes with zero width or height.
-            #     continue
-            boxes[i] = box_xywh_to_xyxy(torch.as_tensor(mask["bbox"]))
-            iou_scores[i] = mask["predicted_iou"]
+        for mask in mask_data:
+            if mask["bbox"][2] == 0 or mask["bbox"][3] == 0:  # Skip boxes with zero width or height.
+                continue
+            # boxes[i] = box_xywh_to_xyxy(torch.as_tensor(mask["bbox"]))
+            boxes.append(box_xywh_to_xyxy(torch.as_tensor(mask["bbox"])))
+            iou_scores.append(mask["predicted_iou"])
+            # iou_scores[i] = mask["predicted_iou"]
+
+        boxes = torch.stack(boxes)
+        iou_scores = torch.as_tensor(iou_scores)
 
         return {
             "image": img,
