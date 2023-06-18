@@ -461,3 +461,13 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         transform = GeneralizedRCNNTransformSAM(min_size, max_size, image_mean, image_std, **kwargs)
 
         super().__init__(backbone, rpn, roi_heads, transform)
+
+    def freeze(self):
+        """Freeze all components but the classifier for discovery training."""
+        # Freeze everything
+        for param in self.parameters():
+            param.requires_grad = False
+
+        # Unfreeze the classification head.
+        for param in self.roi_heads.box_predictor.cls_score.parameters():
+            param.requires_grad = True

@@ -1,5 +1,5 @@
 import configs.discovery as config
-from fully_supervised.model import SAMRPN
+from fully_supervised.model import SAMFasterRCNN
 from discovery.discovery_network import DiscoveryClassifier
 
 from modelling.criterion import SetCriterion
@@ -136,9 +136,7 @@ class DiscoveryModel(nn.Module):
             if key.startswith("model"):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
-        model = SAMRPN(
-            config.num_labeled, config.feature_extractor_ckpt, pad_num=config.pad_num, trainable_backbone_layers=0
-        )
+        model = SAMFasterRCNN(config.num_classes, config.feature_extractor_ckpt, trainable_backbone_layers=0)
         model.load_state_dict(model_state_dict)
         model.freeze()
 

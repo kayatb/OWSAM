@@ -270,8 +270,8 @@ if __name__ == "__main__":
 
     dataset = ImageData(
         "mask_features/val_32",
-        "../datasets/coco",
         "../datasets/coco/annotations/instances_val2017.json",
+        "../datasets/coco",
         device,
     )
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2, collate_fn=ImageData.collate_fn)
@@ -286,6 +286,10 @@ if __name__ == "__main__":
     # state_dict = torch.hub.load_state_dict_from_url(url, progress=True)
     # model.load_state_dict(state_dict)
     model.to(device)
+    # model.freeze()
+    # print("total params:", sum(p.numel() for p in model.parameters()))
+    # print("trainable params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+
     # model.load_state_dict(state_dict)
     # model.eval()
 
