@@ -92,7 +92,6 @@ def save_all_masks(mask_generator, dataloader, save_feat_dir, save_mask_dir, res
 
             # Now delete the masks and point coords we no longer need.
             for mask in output:
-                del mask["point_coords"]
                 del mask["segmentation"]
 
             torch.save(output, save_path_feat)
@@ -105,7 +104,7 @@ if __name__ == "__main__":
     sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
 
     mask_generator = OWSamMaskGenerator(
-        sam, points_per_side=32, pred_iou_thresh=0, stability_score_thresh=0, box_nms_thresh=1.0
+        sam, points_per_side=32, pred_iou_thresh=0.0, stability_score_thresh=0.0, box_nms_thresh=1.0
     )
     sam.to(device=device)  # Should be done after the decoder has been changed by the mask generator
 
