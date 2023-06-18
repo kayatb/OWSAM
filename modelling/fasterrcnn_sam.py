@@ -40,7 +40,6 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
     It returns a ImageList for the inputs, and a List[Dict[Tensor]] for the targets
     """
 
-    # TODO: add random horizontal flip here?
     # def __init__(
     #     self,
     #     min_size: int,
