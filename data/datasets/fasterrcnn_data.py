@@ -109,7 +109,10 @@ class ImageData(torch.utils.data.Dataset):
         )
         # NOTE: pre-trained Faster R-CNN does not use continuous IDs, but original COCO IDs.
         # targets["labels"] = torch.as_tensor([ann["category_id"] for ann in anns], dtype=torch.long)
-        targets["boxes"] = torch.as_tensor([ann["bbox"] for ann in anns])
+        # Filter out target boxes with height or width 0.0.
+        targets["boxes"] = torch.as_tensor(
+            [ann["bbox"] for ann in anns if ann["bbox"][2] > 0.0 and ann["bbox"][3] > 0.0]
+        )
 
         return targets
 
@@ -159,97 +162,9 @@ class ImageData(torch.utils.data.Dataset):
 if __name__ == "__main__":
     from tqdm import tqdm
 
-    # dataset = MaskData("mask_features/train_all", "../datasets/coco/annotations/instances_train2017.json", "cpu")
-
-    # dataloader = torch.utils.data.DataLoader(
-    #     dataset, batch_size=1, collate_fn=MaskData.collate_fn, num_workers=12, pin_memory=True, persistent_workers=True
-    # )
-
-    # # Calculate the maximum amount of masks detected by SAM.
-    # # 666 for train set, 395 for val set.
-    # max_dim = 0
-    # for batch in tqdm(dataloader):
-    #     max_dim = max(max_dim, batch["mask_features"].shape[0])
-    # print(max_dim)
-
-    # dataset = CropMaskData(
-    #     "mask_features/train_all",
-    #     "../datasets/coco/annotations/instances_train2017.json",
-    #     "../datasets/coco/train2017",
-    #     "cpu",
-    # )
-    # # print(dataset[0]["crops"].shape)
-    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropMaskData.collate_fn)
-    # for batch in dataloader:
-    #     print(batch.keys())
-    #     for crop in batch["crops"]:
-    #         print(crop.min())
-    #         print(crop.max())
-    #     break
-
-    # dataset = CropFeatureMaskData(
-    #     "mask_features/all",
-    #     # "../datasets/coco/annotations/instances_val2017.json",
-    #     "../datasets/lvis/lvis_v1_train.json",
-    #     "dino_features/all",
-    #     "cpu",
-    #     # lvis_ann_file="../datasets/lvis/lvis_v1_val.json",
-    # )
-
-    # # print(dataset[0]["lvis_targets"])
-
-    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=3, collate_fn=CropFeatureMaskData.collate_fn)
-    # for batch in tqdm(dataloader):
-    #     # print(batch.keys())
-    #     # print(batch["crop_features"].shape)
-    #     # break
-    #     # print(batch["targets"])
-    #     # break
-    #     continue
-
-    import matplotlib.pyplot as plt
-    import cv2
-
-    # torch.manual_seed(0)
-
-    BOX_COLOR = (255, 0, 0)  # Red
-    TEXT_COLOR = (255, 255, 255)  # White
-
-    def visualize_bbox(img, bbox, color=BOX_COLOR, thickness=2):
-        """Visualizes a single bounding box on the image"""
-        x_min, y_min, x_max, y_max = bbox
-        x_min, x_max, y_min, y_max = int(x_min), int(x_max), int(y_min), int(y_max)
-
-        cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color=color, thickness=thickness)
-
-        cv2.rectangle(img, (x_min, y_min), (x_min, y_min), BOX_COLOR, -1)
-
-        return img
-
-    def visualize(image, bboxes):
-        image = image.permute(1, 2, 0).numpy()
-        img = image.copy()
-        for bbox in bboxes:
-            img = visualize_bbox(img, bbox)
-        plt.figure(figsize=(12, 12))
-        plt.axis("off")
-        plt.imshow(img)
-        plt.show()
-
-    dataset = ImageMaskData(
-        "mask_features/all",
-        "../datasets/coco/annotations/instances_val2017.json",
-        "../datasets/coco/val2017",
-        "cpu",
-        train=True,
+    dataset = ImageData(
+        "mask_features/", "../datasets/coco/annotations/coco_half_train.json", "../datasets/coco", "cpu"
     )
+    dataset.img_ids = [200365]
 
-    data = dataset[0]
-    visualize(data["img"], data["resized_boxes"][:3])
-
-    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=ImageMaskData.collate_fn)
-    # for batch in dataloader:
-    #     # print(batch["resized_boxes"][0][0])
-    #     # print(batch["boxes"][0][0])
-    #     break
-    # print(torch.min(dataset[0]["img"]))
+    print(dataset[0]["targets"]["boxes"])
