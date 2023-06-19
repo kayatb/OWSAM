@@ -1,7 +1,7 @@
 """Config for the training of the RNCDL discovery model."""
 from configs.fully_supervised.rpn import momentum, weight_decay
 
-epochs = 10
+epochs = 10  # FIXME: RNCDL trains for 15K iterations, which is around 2.4 epochs
 lr = 1e-2  # halfed compared to supervised phase.
 end_lr = 1e-3  # Minimum LR for cosine annealing scheduler.
 # Do warmup for n steps and go from warmup_start_lr to initial lr.
@@ -13,21 +13,26 @@ ann_val_labeled = "../datasets/coco/annotations/coco_half_val.json"
 ann_train_unlabeled = "../datasets/lvis/lvis_v1_train.json"
 ann_val_unlabeled = "../datasets/lvis/lvis_v1_val.json"
 
+# ann_train_labeled = "../datasets/coco/annotations/instances_val2017.json"
+# ann_val_labeled = "../datasets/coco/annotations/instances_val2017.json"
+# ann_train_unlabeled = "../datasets/coco/annotations/instances_val2017.json"
+# ann_val_unlabeled = "../datasets/coco/annotations/instances_val2017.json"
+
 masks_dir = "mask_features/all"
 img_dir = "../datasets/coco"
 
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
-supervis_ckpt = "checkpoints/rpn_mocov2_resnet50_SGD_0.01lr_50epochs_16bs/best_model_epoch=45.ckpt"
+supervis_ckpt = "checkpoints/faster_rcnn_TUM/best_model_epoch=45.ckpt"
 
 # RNCDL settings
-num_labeled = 80  # + 1  # FIXME: +1 is also done in FullySupervisedClassifier, watch out!
+num_labeled = 80
 num_unlabeled = 3000  # 2100
 feat_dim = 1024
 hidden_dim = 512
 proj_dim = 256
 num_views = 2
 memory_batches = 100
-items_per_batch = 50  # TODO: take here the average number of masks predicted by SAM
+items_per_batch = 50
 memory_patience = 150
 num_iters_sk = 3
 epsilon_sk = 0.05
@@ -39,7 +44,6 @@ hidden_dim = 256
 
 batch_size = 16  # RNCDL uses 4*4 per GPU
 num_workers = 12
-pad_num = 700  # Max number of detected masks in COCO is 666.
 
 checkpoint_dir = "checkpoints"
 log_dir = "tensorboard_logs"

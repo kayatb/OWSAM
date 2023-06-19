@@ -30,11 +30,6 @@ class DiscoveryModel(nn.Module):
 
         self.supervised_model = self.load_supervised_model(supervised_ckpt)
         self.remove_background_from_supervised_model()
-        # Freeze all components except for the classification head.
-        # self.supervised_model.feature_extractor.freeze()
-        # self.supervised_model.box_roi_pool.freeze()
-        # self.supervised_model.box_head.freeze()
-        self.supervised_criterion = self.load_supervised_criterion()
         self.supervised_loss_lambda = config.supervised_loss_lambda
 
         self.discovery_model = DiscoveryClassifier(
@@ -63,46 +58,36 @@ class DiscoveryModel(nn.Module):
         discovery_loss = {"discovery_loss": 0.0}
 
         if supervised_batch is not None:
-            supervised_output = self.supervised_model(supervised_batch)
-            # print("pred", torch.argmax(supervised_output["pred_logits"][: supervised_batch["num_masks"][0]], dim=-1))
-            # print("target", supervised_batch["targets"][0]["labels"])
-            # Contains "supervised_loss" and "supervised_class_error"
-            supervised_loss = self.supervised_criterion(supervised_output, supervised_batch["targets"])
+            # Contains "loss_classifier" and "loss_box_reg"
+            supervised_loss = self.supervised_model(supervised_batch)
             supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
-            supervised_loss["supervised_ce_loss"] = supervised_loss["supervised_loss"].item()
+            # supervised_loss["supervised_ce_loss"] = supervised_loss["supervised_loss"].item()
 
             if not self.is_discovery_memory_filled():
-                supervised_loss["supervised_loss"] *= 0
+                supervised_loss["supervised_loss_classifier"] *= 0
 
         if unsupervised_batch is not None:
             # Generate features for two different augmented images (so each in feats)
             # Extract features for the ROIs from both augmented images
             # Input to discovery_model should be list with the RoI features for each view.
             if self.training:
-                roi_feats = []
-                for i in range(len(unsupervised_batch["images"])):
-                    with torch.no_grad():
-                        img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"][i])
-                        img_shapes = [img.shape[1:] for img in unsupervised_batch["images"][i]]
-                        roi_feat = self.supervised_model.box_roi_pool(
-                            img_feat, unsupervised_batch["trans_boxes"][i], img_shapes
-                        )
-                        roi_feat = self.supervised_model.box_head(roi_feat)
-                    roi_feats.append(roi_feat)
+                box_feats = self.supervised_model.get_box_features(unsupervised_batch, num_views=config.num_views)
+                # TODO: once batched processing implemented. Split the different views.
+                # box_feats = torch.split(box_feats, len(unsupervised_batch["images"]))
+                # assert len(box_feats[0]) == len(box_feats[1])
 
-                discovery_loss = self.discovery_model(roi_feats)
+                discovery_loss = self.discovery_model(box_feats)
                 discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
             else:
-                with torch.no_grad():
-                    img_feat = self.supervised_model.feature_extractor(unsupervised_batch["images"])
-                    img_shapes = [img.shape[1:] for img in unsupervised_batch["images"]]
-                    roi_feat = self.supervised_model.box_roi_pool(
-                        img_feat, unsupervised_batch["trans_boxes"], img_shapes
-                    )
-                    roi_feat = self.supervised_model.box_head(roi_feat)
-                discovery_output = self.discovery_model.forward_heads_single_view(roi_feat)
+                box_feats = self.supervised_model.get_box_features(
+                    unsupervised_batch, is_discovery_train=False, num_views=1
+                )
+                discovery_output = self.discovery_model.forward_heads_single_view(box_feats)
 
-        loss = supervised_loss["supervised_loss"] * self.supervised_loss_lambda + discovery_loss["discovery_loss"]
+        loss = (
+            supervised_loss["supervised_loss_classifier"] * self.supervised_loss_lambda
+            + discovery_loss["discovery_loss"]
+        )
 
         return loss, supervised_loss, discovery_loss, supervised_output, discovery_output
 
@@ -130,13 +115,12 @@ class DiscoveryModel(nn.Module):
         ckpt_state_dict = torch.load(ckpt_path)["state_dict"]
 
         # Change the state dict to match the plain Torch module.
-        del ckpt_state_dict["criterion.empty_weight"]
         model_state_dict = {}
         for key in ckpt_state_dict.keys():
             if key.startswith("model"):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
-        model = SAMFasterRCNN(config.num_classes, config.feature_extractor_ckpt, trainable_backbone_layers=0)
+        model = SAMFasterRCNN(config.num_labeled + 1, config.feature_extractor_ckpt, trainable_backbone_layers=0)
         model.load_state_dict(model_state_dict)
         model.freeze()
 
@@ -148,34 +132,35 @@ class DiscoveryModel(nn.Module):
         classifier = self.supervised_model.classifier
         classifier.weight = nn.Parameter(classifier.weight[:-1])
         classifier.bias = nn.Parameter(classifier.bias[:-1])
+
         self.supervised_model.num_classes -= 1
 
     def is_discovery_memory_filled(self):
         return self.discovery_model.memory_patience == 0
 
-    def load_supervised_criterion(self):
-        # Use the same criterion as during supervised training phase.
-        eos_coef = 0.05  # Was 0.1
-        weight_dict = {"loss_ce": 0, "loss_bbox": 5}
-        weight_dict["loss_giou"] = 2
+    # def load_supervised_criterion(self):
+    #     # Use the same criterion as during supervised training phase.
+    #     eos_coef = 0.05  # Was 0.1
+    #     weight_dict = {"loss_ce": 0, "loss_bbox": 5}
+    #     weight_dict["loss_giou"] = 2
 
-        losses = ["labels"]
+    #     losses = ["labels"]
 
-        matcher = HungarianMatcher()
-        criterion = SetCriterion(
-            self.supervised_model.num_classes,
-            matcher,
-            weight_dict=weight_dict,
-            eos_coef=eos_coef,
-            losses=losses,
-        )
-        criterion.empty_weight[-1] = 1  # Weight for bg class no longer necessary, because there isn't one.
-        # criterion.to(device)
+    #     matcher = HungarianMatcher()
+    #     criterion = SetCriterion(
+    #         self.supervised_model.num_classes,
+    #         matcher,
+    #         weight_dict=weight_dict,
+    #         eos_coef=eos_coef,
+    #         losses=losses,
+    #     )
+    #     criterion.empty_weight[-1] = 1  # Weight for bg class no longer necessary, because there isn't one.
+    #     # criterion.to(device)
 
-        return criterion
+    #     return criterion
 
 
 if __name__ == "__main__":
-    model = DiscoveryModel("checkpoints/rpn_TUMlike/best_model_epoch=45.ckpt")
+    model = DiscoveryModel("checkpoints/faster_rcnn_TUM/best_model_epoch=45.ckpt")
     # print(model.supervised_classifier)
     # print(model.state_dict()["supervised_classifier.classifier.bias"].shape)

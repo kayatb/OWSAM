@@ -49,14 +49,14 @@ class SinkhornKnoppLognormalPrior(torch.nn.Module):
 
         N = PS.size(0)
         K = PS.size(1)
-        _K_dist = torch.ones((K, 1), dtype=torch.float64).cuda()  # / K
+        _K_dist = torch.ones((K, 1), dtype=torch.float64).to(logits.device)  # / K
         marginals_argsort = torch.argsort(PS.sum(0))
         if self.dist is None:
             _K_dist = (
                 torch.distributions.log_normal.LogNormal(torch.tensor([1.0]), torch.tensor([self.gauss_sd]))
                 .sample(sample_shape=(K, 1))
                 .reshape(-1, 1)
-                .cuda()
+                .to(logits.device)
                 * N
                 / K
             )
@@ -66,7 +66,7 @@ class SinkhornKnoppLognormalPrior(torch.nn.Module):
             _K_dist = self.dist
         _K_dist[marginals_argsort] = torch.sort(_K_dist)[0]
 
-        beta = torch.ones((N, 1), dtype=torch.float64).cuda() / N
+        beta = torch.ones((N, 1), dtype=torch.float64).to(logits.device) / N
         PS.pow_(0.5 * self.lamb)
         r = 1.0 / _K_dist
         r /= r.sum()
@@ -75,7 +75,7 @@ class SinkhornKnoppLognormalPrior(torch.nn.Module):
         err = 1e6
         _counter = 0
 
-        ones = torch.ones(N, dtype=torch.float64).cuda()
+        ones = torch.ones(N, dtype=torch.float64).to(logits.device)
         while (err > 1e-1) and (_counter < 2000):
             alpha = r / torch.matmul(beta.t(), PS).t()
             beta_new = c / torch.matmul(PS, alpha)

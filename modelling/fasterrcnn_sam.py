@@ -11,6 +11,7 @@ SAM as RPN options:
     - Faster R-CNN does post-processing NMS per class to remove duplicate/redundant bboxes.
 """
 from utils.misc import box_xywh_to_xyxy
+import utils.transforms as T
 
 import torch
 from torch import nn, Tensor
@@ -61,10 +62,16 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
     #     self.fixed_size = fixed_size
     #     self._skip_resize = kwargs.pop("_skip_resize", False)
 
-    def forward(
+    def forward(self, images, sam_boxes, targets=None, is_discovery_train=False):
+        if is_discovery_train:
+            return self.discovery_transform(images, sam_boxes)
+        else:
+            return self._forward(images, sam_boxes, targets)
+
+    def _forward(
         self, images: List[Tensor], sam_boxes: List[Tensor], targets: Optional[List[Dict[str, Tensor]]] = None
     ) -> Tuple[ImageList, Optional[List[Dict[str, Tensor]]]]:
-        """Compared to original: added the pre-extracted SAM boxes."""
+        """Compared to original torchvision forward: added the pre-extracted SAM boxes."""
         images = [img for img in images]
         if targets is not None:
             # make a copy of targets to avoid modifying it in-place
@@ -78,7 +85,7 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
                 # for k, v in t.items():
                 #     data[k] = v
                 data["labels"] = t["labels"]
-                data["boxes"] = box_xywh_to_xyxy(t["boxes"])  # Conver boxes to format expected by Faster R-CNN.
+                data["boxes"] = box_xywh_to_xyxy(t["boxes"])  # Convert boxes to format expected by Faster R-CNN.
                 targets_copy.append(data)
             targets = targets_copy
         for i in range(len(images)):
@@ -96,6 +103,37 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             if targets is not None and target_index is not None:
                 targets[i] = target_index
 
+        image_list = self.get_image_list(images)
+
+        return image_list, sam_boxes, targets
+
+    def discovery_transform(self, images, sam_boxes):
+        """Transform the images and boxes correspondingly, where we augment the
+        images twice each, to obtain multiple views for the discovery training.
+        Augmentations used: random color distortion (color jitter, grayscale), random Gaussian blur, random resizing,
+        and random horizontal flip.
+        TODO: The different views are returned as one batch as [all_imgs_view1, all_imgs_view2]."""
+        images = [img for img in images]
+        for i in range(len(images)):
+            image = images[i]
+            sam_index = sam_boxes[i]
+
+            if image.dim() != 3:
+                raise ValueError(f"images is expected to be a list of 3d tensors of shape [C, H, W], got {image.shape}")
+
+            image = self.discovery_augmentations(image)
+
+            image = self.normalize(image)
+            image, sam_index = self.resize(image, sam_index)
+            image, sam_index = self.horizontal_flip(image, sam_index)
+
+            images[i] = image
+            sam_boxes[i] = sam_index
+
+        image_list = self.get_image_list(images)
+        return image_list, sam_boxes
+
+    def get_image_list(self, images):
         image_sizes = [img.shape[-2:] for img in images]
         images = self.batch_images(images, size_divisible=self.size_divisible)
         image_sizes_list: List[Tuple[int, int]] = []
@@ -107,7 +145,18 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             image_sizes_list.append((image_size[0], image_size[1]))
 
         image_list = ImageList(images, image_sizes_list)
-        return image_list, sam_boxes, targets
+        return image_list
+
+    def discovery_augmentations(self, image):
+        """Do color jitter, grayscale, and gaussian blur augmentations."""
+        transform = T.Compose(
+            [
+                T.ColorJitter(0.8, 0.8, 0.8, 0.2, prob=0.8),
+                T.GrayScale(num_output_channels=3, prob=0.2),
+                T.GaussianBlur(sigma=[0.1, 2.0], prob=0.5),
+            ]
+        )
+        image = transform(image)
 
     def resize(
         self,
@@ -368,6 +417,25 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
         else:
             return self.eager_outputs(losses, detections)
 
+    def get_box_features(self, batch, is_discovery_train=False, num_views=2):
+        """Get the box features for the given images and boxes, i.e.
+        feature extraction for the image, RPN, RoI pooling, features for the RoIs."""
+        # TODO: batch the different views to enable a single forward pass.
+        all_features = []
+        for _ in range(num_views):
+            images, sam_boxes, _ = self.transform(
+                batch["images"], batch["sam_boxes"], is_discovery_train=is_discovery_train
+            )
+            features = self.backbone(images.tensors)
+            proposals, _ = self.rpn(sam_boxes, batch["iou_scores"])
+
+            box_features = self.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
+            box_features = self.roi_heads.box_head(box_features)
+
+            all_features.append(box_features)
+
+        return all_features
+
 
 class FasterRCNNSAM(GeneralizedRCNNSAM):
     # Copied from torchvision's FasterRCNN class.
@@ -420,6 +488,8 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
             if box_predictor is None:
                 raise ValueError("num_classes should not be None when box_predictor is not specified")
 
+        self.num_classes = num_classes
+
         out_channels = backbone.out_channels
 
         rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
@@ -469,5 +539,10 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
             param.requires_grad = False
 
         # Unfreeze the classification head.
-        for param in self.roi_heads.box_predictor.cls_score.parameters():
+        # for param in self.roi_heads.box_predictor.cls_score.parameters():
+        for param in self.classifier.parameters():
             param.requires_grad = True
+
+    @property
+    def classifier(self):
+        return self.roi_heads.box_predictor.cls_score
