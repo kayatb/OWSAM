@@ -1,6 +1,6 @@
 import configs.discovery as config
 from data.datasets.fasterrcnn_data import ImageData
-from discovery.discovery_model import DiscoveryModel
+from discovery.discovery_model import DiscoveryModel, ForwardMode
 from eval.coco_eval import CocoEvaluator
 
 import argparse
@@ -27,7 +27,7 @@ class LitDiscovery(pl.LightningModule):
         self.supervis_label_map = supervis_label_map  # Label mapping for the labelled dataset.
 
     def training_step(self, batch, batch_idx):
-        loss, supervised_loss, discovery_loss, _, _ = self.model(batch["labeled"], batch["unlabeled"])
+        loss, supervised_loss, discovery_loss = self.model(batch["labeled"], batch["unlabeled"], mode=ForwardMode.TRAIN)
         supervised_loss = {"train_" + k: v for k, v in supervised_loss.items()}
         discovery_loss = {"train_" + k: v for k, v in discovery_loss.items()}
 
@@ -65,39 +65,36 @@ class LitDiscovery(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx):
-        # Validation datasets are processed sequentially instead of in parallel,
-        # so we only have a supervised or unsupervised batch at a time.
-        if dataloader_idx == 0:  # Labeled dataset
-            _, supervised_loss, _, outputs, _ = self.model(supervised_batch=batch, unsupervised_batch=None)
-            supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
+    def validation_step(self, batch, batch_idx):
+        # Only the supervised dataset is evaluated during training. The unsupervised dataset is evaluated afterwards.
+        # if dataloader_idx == 0:  # Labeled dataset
+        outputs = self.model(supervised_batch=batch, unsupervised_batch=None, mode=ForwardMode.SUPERVISED_VAL)
+        # supervised_loss = {"val_" + k: v for k, v in supervised_loss.items()}
 
-            self.log_dict(
-                supervised_loss,
-                batch_size=len(batch["sam_boxes"]),
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            results = CocoEvaluator.to_coco_format(
-                batch["img_ids"], outputs, self.supervis_label_map, config.num_labeled
-            )
-            self.supervis_evaluator.update(results)
+        # self.log_dict(
+        #     supervised_loss,
+        #     batch_size=len(batch["sam_boxes"]),
+        #     on_step=False,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        # )
+        results = CocoEvaluator.to_coco_format_fasterrcnn(batch["img_ids"], outputs, self.supervis_label_map)
+        self.supervis_evaluator.update(results)
 
-        else:  # Unlabeled dataset
-            _, _, discovery_loss, _, outputs = self.model(supervised_batch=None, unsupervised_batch=batch)
-            discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
+        # else:  # Unlabeled dataset
+        #     outputs = self.model(supervised_batch=None, unsupervised_batch=batch)
+        #     discovery_loss = {"val_" + k: v for k, v in discovery_loss.items()}
 
-            self.log(
-                "val_discovery_loss",
-                discovery_loss["val_discovery_loss"],
-                batch_size=len(batch["sam_boxes"]),
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
+        #     self.log(
+        #         "val_discovery_loss",
+        #         discovery_loss["val_discovery_loss"],
+        #         batch_size=len(batch["sam_boxes"]),
+        #         on_step=False,
+        #         on_epoch=True,
+        #         prog_bar=True,
+        #         logger=True,
+        #     )
 
     def on_validation_epoch_end(self):
         # Evaluation on the supervised dataset.
@@ -194,12 +191,12 @@ def load_data():
         config.img_dir,
         config.device,
     )
-    dataset_val_unlabeled = ImageData(
-        config.masks_dir,
-        config.ann_val_unlabeled,
-        config.img_dir,
-        config.device,
-    )
+    # dataset_val_unlabeled = ImageData(
+    #     config.masks_dir,
+    #     config.ann_val_unlabeled,
+    #     config.img_dir,
+    #     config.device,
+    # )
     dataloader_train_unlabeled = DataLoader(
         dataset_train_unlabeled,
         batch_size=config.batch_size,
@@ -211,25 +208,25 @@ def load_data():
         prefetch_factor=3,
     )
 
-    dataloader_val_unlabeled = DataLoader(
-        dataset_val_unlabeled,
-        batch_size=config.batch_size,
-        shuffle=False,
-        collate_fn=ImageData.collate_fn,
-        num_workers=config.num_workers,
-        persistent_workers=True,
-        pin_memory=True,
-        prefetch_factor=3,
-    )
+    # dataloader_val_unlabeled = DataLoader(
+    #     dataset_val_unlabeled,
+    #     batch_size=config.batch_size,
+    #     shuffle=False,
+    #     collate_fn=ImageData.collate_fn,
+    #     num_workers=config.num_workers,
+    #     persistent_workers=True,
+    #     pin_memory=True,
+    #     prefetch_factor=3,
+    # )
 
     dataloader_train = CombinedLoader(
         {"labeled": dataloader_train_labeled, "unlabeled": dataloader_train_unlabeled}, mode="max_size_cycle"
     )
-    dataloader_val = CombinedLoader(
-        {"labeled": dataloader_val_labeled, "unlabeled": dataloader_val_unlabeled}, mode="sequential"
-    )
+    # dataloader_val = CombinedLoader(
+    #     {"labeled": dataloader_val_labeled, "unlabeled": dataloader_val_unlabeled}, mode="sequential"
+    # )
 
-    return dataloader_train, dataloader_val, dataset_val_labeled.continuous_to_cat_id
+    return dataloader_train, dataloader_val_labeled, dataset_val_labeled.continuous_to_cat_id
 
 
 if __name__ == "__main__":
@@ -256,8 +253,8 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
-        # limit_val_batches=0.001,
+        limit_train_batches=0.001,  # FIXME: remove this for actual training!
+        limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator="gpu" if config.device == "cuda" else "cpu",
@@ -270,7 +267,7 @@ if __name__ == "__main__":
         ],
     )
 
-    trainer.fit(model, dataloader_train)  # , dataloader_val)
+    trainer.fit(model, dataloader_train, dataloader_val)
     # trainer.validate(model, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(

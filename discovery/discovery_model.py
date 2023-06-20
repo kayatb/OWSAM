@@ -2,26 +2,16 @@ import configs.discovery as config
 from fully_supervised.model import SAMFasterRCNN
 from discovery.discovery_network import DiscoveryClassifier
 
-from modelling.criterion import SetCriterion
-from modelling.matcher import HungarianMatcher
-
 import torch
 import torch.nn as nn
 
 
-# class ForwardMode:
-#     SUPERVISED_TRAIN = 0
-#     UNSUPERVISED_TRAIN = 1
-#     SUPERVISED_GT_PRED = 3
-#     UNSUPERVISED_GT_PRED = 4
+class ForwardMode:
+    """Different modes for the discovery model forward pass."""
 
-# SUPERVISED_TRAIN = 0
-# SUPERVISED_INFERENCE = 1
-# PROPOSALS_EXTRACTION = 2
-# DISCOVERY_FEATURE_EXTRACTION = 3
-# DISCOVERY_CLASSIFIER = 4
-# DISCOVERY_GT_CLASS_PREDICTIONS_EXTRACTION = 5
-# DISCOVERY_INFERENCE = 6
+    TRAIN = 0
+    SUPERVISED_VAL = 1
+    UNSUPERVISED_VAL = 2
 
 
 class DiscoveryModel(nn.Module):
@@ -51,45 +41,58 @@ class DiscoveryModel(nn.Module):
             sk_mode="lognormal",
         )
 
-    def forward(self, supervised_batch, unsupervised_batch):
-        supervised_output = None
-        supervised_loss = {"supervised_loss": 0.0}
-        discovery_output = None
-        discovery_loss = {"discovery_loss": 0.0}
+    def forward(self, supervised_batch, unsupervised_batch, mode):
+        if mode == ForwardMode.TRAIN:
+            return self.forward_train(supervised_batch, unsupervised_batch)
+        elif mode == ForwardMode.SUPERVISED_VAL:
+            return self.forward_supervis_val(supervised_batch)
+        elif mode == ForwardMode.UNSUPERVISED_VAL:
+            return self.forward_unsupervis_val(unsupervised_batch)
+        else:
+            raise ValueError(f"Unknown ForwardMode {mode} given.")
 
-        if supervised_batch is not None:
-            # Contains "loss_classifier" and "loss_box_reg"
-            supervised_loss = self.supervised_model(supervised_batch)
-            supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
-            # supervised_loss["supervised_ce_loss"] = supervised_loss["supervised_loss"].item()
+    def forward_train(self, supervised_batch, unsupervised_batch):
+        # Contains "loss_classifier" and "loss_box_reg"
+        supervised_loss = self.supervised_model(supervised_batch)
+        supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
 
-            if not self.is_discovery_memory_filled():
-                supervised_loss["supervised_loss_classifier"] *= 0
+        if not self.is_discovery_memory_filled():
+            supervised_loss["supervised_loss_classifier"] *= 0
 
-        if unsupervised_batch is not None:
-            # Generate features for two different augmented images (so each in feats)
-            # Extract features for the ROIs from both augmented images
-            # Input to discovery_model should be list with the RoI features for each view.
-            if self.training:
-                box_feats = self.supervised_model.get_box_features(unsupervised_batch, num_views=config.num_views)
-                # TODO: once batched processing implemented. Split the different views.
-                # box_feats = torch.split(box_feats, len(unsupervised_batch["images"]))
-                # assert len(box_feats[0]) == len(box_feats[1])
+        # Generate features for two different augmented images (so each in feats)
+        # Extract features for the ROIs from both augmented images
+        # Input to discovery_model should be list with the RoI features for each view.
+        box_feats = self.supervised_model.get_box_features(unsupervised_batch, num_views=config.num_views)
+        # TODO: once batched processing implemented. Split the different views.
+        # box_feats = torch.split(box_feats, len(unsupervised_batch["images"]))
+        # assert len(box_feats[0]) == len(box_feats[1])
 
-                discovery_loss = self.discovery_model(box_feats)
-                discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
-            else:
-                box_feats = self.supervised_model.get_box_features(
-                    unsupervised_batch, is_discovery_train=False, num_views=1
-                )
-                discovery_output = self.discovery_model.forward_heads_single_view(box_feats)
+        discovery_loss = self.discovery_model(box_feats)
+        discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
 
         loss = (
             supervised_loss["supervised_loss_classifier"] * self.supervised_loss_lambda
             + discovery_loss["discovery_loss"]
         )
 
-        return loss, supervised_loss, discovery_loss, supervised_output, discovery_output
+        return loss, supervised_loss, discovery_loss
+
+    def forward_supervis_val(self, batch):
+        """Validation forward pass on supervised data."""
+        self.supervised_model.eval()
+
+        output = self.supervised_model(batch)
+        return output
+
+    def forward_unsupervis_val(self, batch):
+        """Validation forward pass on unsupervised data."""
+        self.supervised_model.eval()
+        self.discovery_model.eval()
+
+        box_feats = self.supervised_model.get_box_features(batch, is_discovery_train=False, num_views=1)
+        output = self.discovery_model.forward_heads_single_view(box_feats)
+
+        return output
 
     @torch.no_grad()
     def extract_gt_preds(self, batch):
