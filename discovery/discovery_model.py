@@ -1,6 +1,7 @@
 import configs.discovery as config
 from fully_supervised.model import SAMFasterRCNN
 from discovery.discovery_network import DiscoveryClassifier
+from discovery.roi_heads_discovery import RoIHeadsDiscovery
 
 import torch
 import torch.nn as nn
@@ -52,6 +53,8 @@ class DiscoveryModel(nn.Module):
             raise ValueError(f"Unknown ForwardMode {mode} given.")
 
     def forward_train(self, supervised_batch, unsupervised_batch):
+        # TODO: only calculate classification loss for foreground (i.e. matched) proposals,
+        # since background class is removed.
         # Contains "loss_classifier" and "loss_box_reg"
         supervised_loss = self.supervised_model(supervised_batch)
         supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
@@ -81,7 +84,9 @@ class DiscoveryModel(nn.Module):
         """Validation forward pass on supervised data."""
         self.supervised_model.eval()
 
-        output = self.supervised_model(batch)
+        output = self.supervised_model(
+            batch
+        )  # TODO: need to add a fake background class, since Faster R-CNN filters out the first element of the class logits.
         return output
 
     def forward_unsupervis_val(self, batch):
@@ -124,6 +129,19 @@ class DiscoveryModel(nn.Module):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
         model = SAMFasterRCNN(config.num_labeled + 1, config.feature_extractor_ckpt, trainable_backbone_layers=0)
+        model.roi_heads = RoIHeadsDiscovery(
+            model.roi_heads.box_roi_pool,
+            model.roi_heads.box_head,
+            model.roi_heads.box_predictor,
+            model.box_fg_iou_thresh,
+            model.box_bg_iou_thresh,
+            model.box_batch_size_per_image,
+            model.box_positive_fraction,
+            model.bbox_reg_weights,
+            model.roi_heads.score_thresh,
+            model.roi_heads.nms_thresh,
+            model.roi_heads.detections_per_img,
+        )
         model.load_state_dict(model_state_dict)
         model.freeze()
 
@@ -133,8 +151,9 @@ class DiscoveryModel(nn.Module):
     def remove_background_from_supervised_model(self):
         """Remove the background class from the supervised classifier to enable discovery of new classes."""
         classifier = self.supervised_model.classifier
-        classifier.weight = nn.Parameter(classifier.weight[:-1])
-        classifier.bias = nn.Parameter(classifier.bias[:-1])
+        # Background is index 0, so the first weight/bias element.
+        classifier.weight = nn.Parameter(classifier.weight[1:])
+        classifier.bias = nn.Parameter(classifier.bias[1:])
 
         self.supervised_model.num_classes -= 1
 

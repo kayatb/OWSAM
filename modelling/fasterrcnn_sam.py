@@ -509,6 +509,13 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
             representation_size = 1024
             box_predictor = FastRCNNPredictor(representation_size, num_classes)
 
+        # Need access to these values for changing RoIHeads in discovery phase.
+        self.box_fg_iou_thresh = box_fg_iou_thresh
+        self.box_bg_iou_thresh = box_bg_iou_thresh
+        self.box_batch_size_per_image = box_batch_size_per_image
+        self.box_positive_fraction = box_positive_fraction
+        self.bbox_reg_weights = bbox_reg_weights
+
         roi_heads = RoIHeads(
             # Box
             box_roi_pool,

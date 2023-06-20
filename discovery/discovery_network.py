@@ -212,7 +212,7 @@ class DiscoveryClassifier(nn.Module):
         return logits_full
 
     def forward_heads(self, feats):
-        logits_lab = self.head_lab(feats)  # TODO: do we need padding here?
+        logits_lab = self.head_lab(feats)
         logits_unlab, _ = self.head_unlab(feats)
         logits_unlab /= self.temperature
 
