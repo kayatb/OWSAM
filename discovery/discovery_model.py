@@ -53,9 +53,8 @@ class DiscoveryModel(nn.Module):
             raise ValueError(f"Unknown ForwardMode {mode} given.")
 
     def forward_train(self, supervised_batch, unsupervised_batch):
-        # TODO: only calculate classification loss for foreground (i.e. matched) proposals,
         # since background class is removed.
-        # Contains "loss_classifier" and "loss_box_reg"
+        # Contains "loss_classifier"
         supervised_loss = self.supervised_model(supervised_batch)
         supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
 
@@ -84,9 +83,7 @@ class DiscoveryModel(nn.Module):
         """Validation forward pass on supervised data."""
         self.supervised_model.eval()
 
-        output = self.supervised_model(
-            batch
-        )  # TODO: need to add a fake background class, since Faster R-CNN filters out the first element of the class logits.
+        output = self.supervised_model(batch)
         return output
 
     def forward_unsupervis_val(self, batch):

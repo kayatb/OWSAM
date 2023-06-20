@@ -253,8 +253,8 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         # fast_dev_run=3,
-        limit_train_batches=0.001,  # FIXME: remove this for actual training!
-        limit_val_batches=0.001,
+        # limit_train_batches=0.001,  # FIXME: remove this for actual training!
+        # limit_val_batches=0.001,
         default_root_dir=config.checkpoint_dir,
         logger=pl.loggers.tensorboard.TensorBoardLogger(save_dir=config.log_dir),
         accelerator="gpu" if config.device == "cuda" else "cpu",
@@ -267,8 +267,8 @@ if __name__ == "__main__":
         ],
     )
 
-    # trainer.fit(model, dataloader_train, dataloader_val)
-    trainer.validate(model, dataloader_val)
+    trainer.fit(model, dataloader_train, dataloader_val)
+    # trainer.validate(model, dataloader_val)
 
     # model = LitFullySupervisedClassifier.load_from_checkpoint(
     #     "checkpoints/epoch=499-step=500.ckpt", device=config.device
