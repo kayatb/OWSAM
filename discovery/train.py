@@ -156,12 +156,14 @@ def load_data():
         config.ann_train_labeled,
         config.img_dir,
         config.device,
+        offset=0,
     )
     dataset_val_labeled = ImageData(
         config.masks_dir,
         config.ann_val_labeled,
         config.img_dir,
         config.device,
+        offset=1,  # Validation does need ID 0 for bg class, since we add a fake one at the postprocessing.
     )
     dataloader_train_labeled = DataLoader(
         dataset_train_labeled,
@@ -190,6 +192,7 @@ def load_data():
         config.ann_train_unlabeled,
         config.img_dir,
         config.device,
+        offset=0,
     )
     # dataset_val_unlabeled = ImageData(
     #     config.masks_dir,

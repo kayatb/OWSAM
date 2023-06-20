@@ -11,7 +11,7 @@ from PIL import Image
 class ImageData(torch.utils.data.Dataset):
     """Load the pre-extracted masks and their features into a torch Dataset."""
 
-    def __init__(self, feature_dir, ann_file, img_dir, device):
+    def __init__(self, feature_dir, ann_file, img_dir, device, offset=0):
         """Load the masks and their features from `dir`."""
         self.feature_dir = feature_dir
         self.img_dir = img_dir
@@ -45,9 +45,12 @@ class ImageData(torch.utils.data.Dataset):
         # Class ids are non-continuous. Map them to a continuous range and vice versa.
         self.cat_id_to_continuous = {}
         self.continuous_to_cat_id = {}
+        # Start the classes at 1. ID 0 is reserved for no-object class.
+        # Don't do this in discovery phase, since the bg class is removed.
+        # offset = 0 if discovery else 1
         for i, id in enumerate(self.cat_id_to_name.keys()):
-            self.cat_id_to_continuous[id] = i + 1  # Start the classes at 1. ID 0 is reserved for no-object class.
-            self.continuous_to_cat_id[i + 1] = id
+            self.cat_id_to_continuous[id] = i + offset
+            self.continuous_to_cat_id[i + offset] = id
 
     def __getitem__(self, idx):
         """Returns the masks, boxes, mask_features, iou_scores, the image id (i.e. filename),

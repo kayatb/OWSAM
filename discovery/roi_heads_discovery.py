@@ -26,7 +26,7 @@ class RoIHeadsDiscovery(RoIHeads):
         """Add a fake background score to the logits.
         The background class is always at index 0, so add it to the beginning of the tensors."""
         batch_size = class_logits.shape[0]
-        fake_bg = torch.zeros(batch_size, 1)
+        fake_bg = torch.zeros(batch_size, 1, device=class_logits.device)
         new_class_logits = torch.cat((fake_bg, class_logits), dim=1)
         return new_class_logits
 
@@ -83,7 +83,7 @@ class RoIHeadsDiscovery(RoIHeads):
             # keep only topk scoring predictions
             keep = keep[: self.detections_per_img]
             boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
-
+            print(labels)
             all_boxes.append(boxes)
             all_scores.append(scores)
             all_labels.append(labels)
