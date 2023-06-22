@@ -249,7 +249,7 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:5]
+    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:2]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,

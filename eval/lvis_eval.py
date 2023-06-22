@@ -702,6 +702,38 @@ class LVISEvalDiscovery(LVISEval):
                 key = "AR{}@{}".format(area_rng[0], max_dets)
                 container[key] = self._summarize("ar", area_rng=area_rng, subset_class_ids=subset_class_ids)
 
+    def print_results(self):
+        template = " {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} catIds={:>3s}] = {:0.3f}"
+
+        for results, type in [(self.results, "all"), (self.results_known, "known"), (self.results_novel, "novel")]:
+            print(f"========== Results for {type} classes ==========")
+            for key, value in results.items():
+                max_dets = self.params.max_dets
+                if "AP" in key:
+                    title = "Average Precision"
+                    _type = "(AP)"
+                else:
+                    title = "Average Recall"
+                    _type = "(AR)"
+
+                if len(key) > 2 and key[2].isdigit():
+                    iou_thr = float(key[2:]) / 100
+                    iou = "{:0.2f}".format(iou_thr)
+                else:
+                    iou = "{:0.2f}:{:0.2f}".format(self.params.iou_thrs[0], self.params.iou_thrs[-1])
+
+                if len(key) > 2 and key[2] in ["r", "c", "f"]:
+                    cat_group_name = key[2]
+                else:
+                    cat_group_name = "all"
+
+                if len(key) > 2 and key[2] in ["s", "m", "l"]:
+                    area_rng = key[2]
+                else:
+                    area_rng = "all"
+
+                print(template.format(title, _type, iou, area_rng, max_dets, cat_group_name, value))
+
 
 class LvisEvaluator(object):
     def __init__(self, lvis_gt, iou_types, known_class_ids=None):
