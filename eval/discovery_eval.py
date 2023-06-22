@@ -8,7 +8,8 @@ https://github.com/vlfom/RNCDL/blob/main/discovery/evaluation/evaluator_discover
 from eval.lvis_eval import LvisEvaluator, LVISEvalDiscovery, LVISResults
 import configs.discovery as config
 from discovery.discovery_model import DiscoveryModel
-from data.datasets.mask_feature_dataset import ImageMaskData, DiscoveryImageMaskData
+from data.datasets.fasterrcnn_data import ImageData
+from utils.misc import box_xyxy_to_xywh
 
 import torch
 from torch.utils.data import DataLoader
@@ -152,18 +153,18 @@ class DiscoveryEvaluator:
             batch: the batch with the data to run the model on.
             is_supervis: boolean to signify whether the batch comes from the supervised or unsupervised dataset."""
         # Move data to device
-        batch["images"] = batch["images"].to(config.device)
-        batch["trans_boxes"] = [box.to(config.device) for box in batch["trans_boxes"]]
+        # batch["images"] = batch["images"].to(config.device)
+        batch["sam_boxes"] = [box.to(config.device) for box in batch["sam_boxes"]]
         batch["targets"] = [{"labels": t["labels"], "boxes": t["boxes"].to(config.device)} for t in batch["targets"]]
 
         # Get outputs from the model.
-        outputs, outputs_gt = self.model.extract_gt_preds(batch)
+        sam_outputs, gt_preds = self.model.extract_gt_preds(batch, is_supervis=is_supervis)
 
         # Save predictions from the unsupervised dataset.
         if not is_supervis:
-            self.unsupervis_preds.extend(self.pred_to_lvis_format(batch, outputs))
+            self.unsupervis_preds.extend(self.pred_to_lvis_format(batch, sam_outputs))
 
-        self.class_mapper.update(batch, outputs_gt)
+        self.class_mapper.update(batch, gt_preds)
 
     def evaluate(self):
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
@@ -172,8 +173,7 @@ class DiscoveryEvaluator:
         print(self.class_mapper.class_mapping)
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
-            print(pred)
-            pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"]]
+            pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"].item()]
             # FIXME: might need to map from continuous IDs to GT IDs
             # Filter out predictions of novel categories (i.e. not mapped to a GT category).
             if pred["category_id"] < config.novel_class_id_thresh:
@@ -194,12 +194,11 @@ class DiscoveryEvaluator:
         """Get a model prediction in the format for LVIS evaluation. Returns a list of dicts with keys:
         image_id, category_id, bbox, score"""
         formatted = []
-        # pred_labels = torch.argmax(outputs, dim=-1)
-        for i in range(batch["boxes"].shape[0]):
+        for i in range(len(batch["img_ids"])):
             img_id = batch["img_ids"][i]
-            boxes = batch["boxes"][i][: batch["num_masks"][i]].tolist()
-            scores = batch["iou_scores"][i][: batch["num_masks"][i]].tolist()
-            labels = outputs.tolist()
+            boxes = np.array(box_xyxy_to_xywh(outputs[i]["boxes"]))
+            scores = outputs[i]["scores"]
+            labels = outputs[i]["labels"]
 
             formatted.extend(
                 [
@@ -216,39 +215,48 @@ class DiscoveryEvaluator:
 
 
 if __name__ == "__main__":
-    device = "cuda"
+    config.device = "cpu"
+    # Load the pre-trained model.
+    discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=1-step=12424.ckpt"
     model = DiscoveryModel(config.supervis_ckpt)
+    # NOTE: if this throws errors for `discovery_model.memory_feat`, change the batch size to value it was trained with.
+    model.from_checkpoint(discovery_ckpt_path)
     model.to(config.device)
 
     # Load the data
-    dataset_val_labeled = ImageMaskData(
-        config.masks_dir, config.ann_val_labeled, config.img_dir, config.device, train=False, pad_num=config.pad_num
+    dataset_val_labeled = ImageData(
+        config.masks_dir,
+        config.ann_val_labeled,
+        config.img_dir,
+        config.device,
     )
+    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:2]
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
-        batch_size=config.batch_size,
+        # batch_size=config.batch_size,
+        batch_size=2,
         shuffle=False,
-        collate_fn=dataset_val_labeled.collate_fn,
+        collate_fn=ImageData.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
         prefetch_factor=3,
     )
 
-    dataset_val_unlabeled = DiscoveryImageMaskData(
+    dataset_val_unlabeled = ImageData(
         config.masks_dir,
         config.ann_val_unlabeled,
         config.img_dir,
         config.device,
-        train=False,
-        pad_num=config.pad_num,
-        num_views=config.num_views,
     )
+    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:5]
+
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
-        batch_size=config.batch_size,
+        # batch_size=config.batch_size,
+        batch_size=2,
         shuffle=False,
-        collate_fn=dataset_val_unlabeled.collate_fn,
+        collate_fn=ImageData.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,

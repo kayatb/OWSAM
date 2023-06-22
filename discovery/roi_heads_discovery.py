@@ -83,7 +83,6 @@ class RoIHeadsDiscovery(RoIHeads):
             # keep only topk scoring predictions
             keep = keep[: self.detections_per_img]
             boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
-            print(labels)
             all_boxes.append(boxes)
             all_scores.append(scores)
             all_labels.append(labels)

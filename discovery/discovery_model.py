@@ -96,24 +96,78 @@ class DiscoveryModel(nn.Module):
 
         return output
 
+    # @torch.no_grad()
+    # def extract_gt_preds_old(self, batch):
+    #     """Extract predictions for the GT boxes and for the predicted boxes."""
+    #     self.discovery_model.eval()
+    #     self.supervised_model.eval()
+
+    #     sam_box_features, gt_box_features = self.supervised_model.get_gt_box_features(batch)
+
+    #     gt_logits = self.discovery_model.forward_heads_single_view(gt_box_features)
+    #     gt_preds = torch.argmax(gt_logits, dim=-1)
+
+    #     return preds[0], gt_preds  # SAM boxes, GT boxes
+
     @torch.no_grad()
-    def extract_gt_preds(self, batch):
-        """Extract predictions for the GT boxes and for the predicted boxes."""
-        target_boxes = [t["boxes"] for t in batch["targets"]]
-        img_feats = self.supervised_model.feature_extractor(batch["images"])
-        img_shapes = [img.shape for img in batch["images"]]
+    def extract_gt_preds(self, batch, is_supervis):
+        """Get the box features for the GT boxes and the SAM boxes in a single pass.
+        Also return the post-processed detections for SAM with novel classes, but only for the unsupervised data.
+        Used for discovery evaluation after training."""
+        self.eval()
+        self.supervised_model.eval()
+        self.discovery_model.eval()
 
-        preds = []
-        for boxes in [batch["trans_boxes"], target_boxes]:
-            roi_feats = self.supervised_model.box_roi_pool(img_feats, boxes, img_shapes)
-            roi_feats = self.supervised_model.box_head(roi_feats)
+        original_image_sizes = [img.shape[-2:] for img in batch["images"]]
 
-            logits = self.discovery_model.forward_heads_single_view(roi_feats)
-            preds.append(torch.argmax(logits, dim=-1))
+        images, sam_boxes, targets = self.supervised_model.transform(
+            batch["images"], batch["sam_boxes"], batch["targets"]
+        )
+        target_boxes = [t["boxes"] for t in targets]
+        # Get the image features.
+        features = self.supervised_model.backbone(images.tensors.to(sam_boxes[0].device))
+        boxes_to_extract = [target_boxes] if is_supervis else [target_boxes, sam_boxes]
 
-            assert len(preds[-1] == len(boxes))
+        # Get box features for both boxes.
+        box_features = []
+        for boxes in boxes_to_extract:
+            proposals, _ = self.supervised_model.rpn(
+                boxes, batch["iou_scores"]
+            )  # NOTE: Just returns the boxes as-is right now.
+            box_feats = self.supervised_model.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
+            box_feats = self.supervised_model.roi_heads.box_head(box_feats)
 
-        return preds[0], preds[1]  # predictions, GT
+            box_features.append(box_feats)
+
+        # Get the predicted labels for the GT boxes.
+        gt_logits = self.discovery_model.forward_heads_single_view(box_features[0])
+        gt_preds = torch.argmax(gt_logits, dim=-1)
+
+        sam_outputs = []
+        if not is_supervis:
+            sam_logits, sam_box_regression = self.supervised_model.roi_heads.box_predictor(box_features[1])
+            # Predict known and novel classes
+            sam_logits = self.discovery_model.forward_heads_single_view(box_features[1])
+            sam_box_regression = torch.zeros(sam_logits.shape[0], sam_logits.shape[1] * 4, device=sam_logits.device)
+
+            boxes, scores, labels = self.supervised_model.roi_heads.postprocess_detections(
+                sam_logits, sam_box_regression, proposals, images.image_sizes
+            )
+            sam_outputs = []
+            num_images = len(boxes)
+            for i in range(num_images):
+                sam_outputs.append(
+                    {
+                        "boxes": boxes[i],
+                        "labels": labels[i],
+                        "scores": scores[i],
+                    }
+                )
+            sam_outputs = self.supervised_model.transform.postprocess(
+                sam_outputs, images.image_sizes, original_image_sizes
+            )
+
+        return sam_outputs, gt_preds  # Features for SAM boxes and predictions for GT boxes.
 
     def load_supervised_model(self, ckpt_path):
         """Load the pre-trained supervised classification head."""
@@ -156,6 +210,18 @@ class DiscoveryModel(nn.Module):
 
     def is_discovery_memory_filled(self):
         return self.discovery_model.memory_patience == 0
+
+    def from_checkpoint(self, ckpt_path):
+        """Load weights from a checkpoint from PyTorch Lightning."""
+        ckpt_state_dict = torch.load(ckpt_path)["state_dict"]
+
+        # Change the state dict to match the plain Torch module.
+        model_state_dict = {}
+        for key in ckpt_state_dict.keys():
+            if key.startswith("model"):
+                model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
+
+        self.load_state_dict(model_state_dict)
 
     # def load_supervised_criterion(self):
     #     # Use the same criterion as during supervised training phase.
