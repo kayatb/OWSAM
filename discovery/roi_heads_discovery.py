@@ -43,8 +43,12 @@ class RoIHeadsDiscovery(RoIHeads):
         num_classes = class_logits.shape[-1]
 
         boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
-        pred_boxes = self.box_coder.decode(box_regression, proposals)  # FIXME: does this work with 0's tensor?
-        # pred_boxes = torch.cat(proposals)
+
+        if box_regression is not None:
+            pred_boxes = self.box_coder.decode(box_regression, proposals)
+        else:  # No box regression during discovery phase, so use the proposals as-is.
+            pred_boxes = torch.cat(proposals).unsqueeze(1)
+            pred_boxes = pred_boxes.repeat(1, num_classes, 1)
 
         pred_scores = F.softmax(class_logits, -1)
 
