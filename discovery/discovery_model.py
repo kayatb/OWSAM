@@ -148,7 +148,8 @@ class DiscoveryModel(nn.Module):
             sam_logits, sam_box_regression = self.supervised_model.roi_heads.box_predictor(box_features[1])
             # Predict known and novel classes
             sam_logits = self.discovery_model.forward_heads_single_view(box_features[1])
-            sam_box_regression = torch.zeros(sam_logits.shape[0], sam_logits.shape[1] * 4, device=sam_logits.device)
+            # sam_box_regression = torch.zeros(sam_logits.shape[0], sam_logits.shape[1] + 1 * 4, device=sam_logits.device)
+            sam_box_regression = torch.zeros(3072, 3081 * 4, device=sam_logits.device)
 
             boxes, scores, labels = self.supervised_model.roi_heads.postprocess_detections(
                 sam_logits, sam_box_regression, proposals, images.image_sizes

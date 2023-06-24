@@ -23,7 +23,7 @@ class ClassMapper:
     Obtains discovery_id -> GT class_id based on the provided GT annotations and their predictions via solving an
     optimal transport problem.
 
-    FIXME: does this apply for my implementation? --> Note: GT class_id here is the class_id that D2 provides to the models during training. Usually, those are not real
+    NOTE: GT class_id here is the class_id that is provided to the models during training. Usually, those are not real
     GT class ids, but rather them remapped to consecutive numbers.
     """
 
@@ -133,9 +133,11 @@ class DiscoveryEvaluator:
     """First calculate the discovery ID to GT ID class mapping.
     Also save the predictions to later map to the correct category and evaluate on the LVIS dataset."""
 
-    def __init__(self, model):
+    def __init__(self, model, label_maping):
         self.model = model
         model.eval()
+
+        self.label_mapping = label_mapping  # Map from dataset labels to GT annotation labels
 
         # self.evaluator = LvisEvaluator(config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids)
         self.class_mapper = ClassMapper(config.last_free_class_id, config.max_class_num, config.novel_class_id_thresh)
@@ -170,13 +172,15 @@ class DiscoveryEvaluator:
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
         self.class_mapper.get_mapping()
-        print(self.class_mapper.class_mapping)
+        # print(self.class_mapper.class_mapping)
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
+            # Map from the predicted label to the label found with the Hungarian algorithm.
             pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"].item()]
-            # FIXME: might need to map from continuous IDs to GT IDs
             # Filter out predictions of novel categories (i.e. not mapped to a GT category).
             if pred["category_id"] < config.novel_class_id_thresh:
+                # Now map from that label back to the labels as in the original annotations.
+                pred["category_id"] = self.label_mapping[pred["category_id"]]
                 mapped_preds.append(pred)
 
         # for pred in mapped_preds:
@@ -250,6 +254,7 @@ if __name__ == "__main__":
         config.device,
     )
     dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:2]
+    dataset_val_unlabeled.img_ids = [139]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
@@ -263,7 +268,8 @@ if __name__ == "__main__":
         prefetch_factor=3,
     )
 
-    evaluator = DiscoveryEvaluator(model)
+    label_mapping = dataset_val_unlabeled.continuous_to_cat_id
+    evaluator = DiscoveryEvaluator(model, label_mapping)
 
     print("Processing supervised data...")
     for batch in tqdm(dataloader_val_labeled):
