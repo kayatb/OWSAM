@@ -172,7 +172,6 @@ class DiscoveryEvaluator:
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
         self.class_mapper.get_mapping()
-        # print(self.class_mapper.class_mapping)
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
             # Map from the predicted label to the label found with the Hungarian algorithm.
@@ -234,7 +233,7 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:2]
+
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
         # batch_size=config.batch_size,
@@ -253,8 +252,6 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:2]
-    dataset_val_unlabeled.img_ids = [139]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
