@@ -199,9 +199,9 @@ class DiscoveryEvaluator:
         formatted = []
         for i in range(len(batch["img_ids"])):
             img_id = batch["img_ids"][i]
-            boxes = np.array(box_xyxy_to_xywh(outputs[i]["boxes"]))
-            scores = outputs[i]["scores"]
-            labels = outputs[i]["labels"]
+            boxes = np.array(box_xyxy_to_xywh(outputs[i]["boxes"]).cpu())
+            scores = outputs[i]["scores"].cpu()
+            labels = outputs[i]["labels"].cpu()
 
             formatted.extend(
                 [
@@ -218,9 +218,11 @@ class DiscoveryEvaluator:
 
 
 if __name__ == "__main__":
-    config.device = "cpu"
+    # config.device = "cpu"
     # Load the pre-trained model.
     discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=1-step=12424.ckpt"
+    batch_size = 8
+
     model = DiscoveryModel(config.supervis_ckpt)
     # NOTE: if this throws errors for `discovery_model.memory_feat`, change the batch size to value it was trained with.
     model.from_checkpoint(discovery_ckpt_path)
@@ -237,7 +239,7 @@ if __name__ == "__main__":
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
         # batch_size=config.batch_size,
-        batch_size=2,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=ImageData.collate_fn,
         num_workers=config.num_workers,
@@ -256,7 +258,7 @@ if __name__ == "__main__":
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
         # batch_size=config.batch_size,
-        batch_size=2,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=ImageData.collate_fn,
         num_workers=config.num_workers,
