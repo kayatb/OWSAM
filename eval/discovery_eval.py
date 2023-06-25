@@ -233,8 +233,8 @@ class DiscoveryEvaluator:
 if __name__ == "__main__":
     # config.device = "cpu"
     # Load the pre-trained model.
-    discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=1-step=12424.ckpt"
-    batch_size = 8
+    discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=2-step=18636.ckpt"
+    batch_size = 1
 
     model = DiscoveryModel(config.supervis_ckpt)
     # NOTE: if this throws errors for `discovery_model.memory_feat`, change the batch size to value it was trained with.
