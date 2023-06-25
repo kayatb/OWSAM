@@ -174,6 +174,7 @@ class LVISEval:
         self.ious = {}  # ious between all gts and dts
 
         self.params.img_ids = sorted(self.lvis_gt.get_img_ids())
+        # self.params.img_ids = [724]
         self.params.cat_ids = sorted(self.lvis_gt.get_cat_ids())
 
     def _to_mask(self, anns, lvis):
@@ -199,6 +200,8 @@ class LVISEval:
                 gt["ignore"] = 0
 
         for gt in gts:
+            # if gt["image_id"] != 724:
+            #     continue
             self._gts[gt["image_id"], gt["category_id"]].append(gt)
 
         # For federated dataset evaluation we will filter out all dt for an

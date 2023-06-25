@@ -170,20 +170,26 @@ class DiscoveryEvaluator:
 
         self.class_mapper.update(batch, gt_preds)
 
-    def evaluate(self):
+    def evaluate(self, saved_class_map, saved_preds):
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
-        self.class_mapper.get_mapping()
+        # self.class_mapper.get_mapping()
+        with open(saved_class_map, "rb") as fp:
+            self.class_mapper.class_mapping = pickle.load(fp)
 
-        print("Saving the class_mapping at owsam_eval_lvis_class_mapping.json")
-        with open("owsam_eval_lvis_class_mapping.p", "wb") as fp:
-            pickle.dump(self.class_mapper.class_mapping, fp)
-        print("Saved class mapping")
+        with open(saved_preds, "rb") as fp:
+            self.unsupervis_preds = pickle.load(fp)
 
-        print("Saving predictions at owsam_eval_lvis_preds.json")
-        with open("owsam_eval_lvis_preds.p", "wb") as fp:
-            pickle.dump(self.unsupervis_preds, fp)
-        print("Saved predictions")
+        # For saving of the predictions and found class mapping:
+        # print("Saving the class_mapping at owsam_eval_lvis_class_mapping.json")
+        # with open("owsam_eval_lvis_class_mapping.p", "wb") as fp:
+        #     pickle.dump(self.class_mapper.class_mapping, fp)
+        # print("Saved class mapping")
+
+        # print("Saving predictions at owsam_eval_lvis_preds.json")
+        # with open("owsam_eval_lvis_preds.p", "wb") as fp:
+        #     pickle.dump(self.unsupervis_preds, fp)
+        # print("Saved predictions")
 
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
@@ -220,7 +226,9 @@ class DiscoveryEvaluator:
                 [
                     {
                         "image_id": img_id,
-                        "category_id": labels[k].item(),
+                        # During prediction extraction, we add a fake background class, which moves every label one to
+                        # the right (i.e. background is set as ID 0). To match with the label mappers, reverse this.
+                        "category_id": labels[k].item() - 1,
                         "bbox": box,
                         "score": scores[k].item(),
                     }
@@ -231,10 +239,12 @@ class DiscoveryEvaluator:
 
 
 if __name__ == "__main__":
-    # config.device = "cpu"
     # Load the pre-trained model.
     discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=2-step=18636.ckpt"
     batch_size = 1
+
+    saved_class_mapping = "owsam_lvis_eval_class_mapping.p"
+    saved_preds = "owsam_lvis_eval_preds.p"
 
     model = DiscoveryModel(config.supervis_ckpt)
     # NOTE: if this throws errors for `discovery_model.memory_feat`, change the batch size to value it was trained with.
@@ -248,10 +258,10 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
+    # dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:1]
 
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
-        # batch_size=config.batch_size,
         batch_size=batch_size,
         shuffle=False,
         collate_fn=ImageData.collate_fn,
@@ -268,9 +278,10 @@ if __name__ == "__main__":
         config.device,
     )
 
+    # dataset_val_unlabeled.img_ids = [724]
+
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
-        # batch_size=config.batch_size,
         batch_size=batch_size,
         shuffle=False,
         collate_fn=ImageData.collate_fn,
@@ -283,19 +294,27 @@ if __name__ == "__main__":
     label_mapping = dataset_val_unlabeled.continuous_to_cat_id
     evaluator = DiscoveryEvaluator(model, label_mapping)
 
-    print("Processing supervised data...")
-    for batch in tqdm(dataloader_val_labeled):
-        evaluator.update(batch, is_supervis=True)
+    # print("Processing supervised data...")
+    # for batch in tqdm(dataloader_val_labeled):
+    #     evaluator.update(batch, is_supervis=True)
 
-    print("Processing unsupervised data...")
-    for batch in tqdm(dataloader_val_unlabeled):
-        evaluator.update(batch, is_supervis=False)
+    # print("Processing unsupervised data...")
+    # for batch in tqdm(dataloader_val_unlabeled):
+    #     evaluator.update(batch, is_supervis=False)
 
     print("Evaluating the predictions...")
-    evaluator.evaluate()
+    evaluator.evaluate(saved_class_mapping, saved_preds)
+
+    # for id in config.lvis_known_class_ids:
+    #     # i = dataset_val_unlabeled.cat_id_to_continuous[id]
+    #     print(dataset_val_unlabeled.cat_id_to_name[id])
 
     # with open("owsam_eval_lvis_class_mapping.p", "rb") as fp:
-    #     print(pickle.load(fp))
+    #     class_mapping = pickle.load(fp)
+
+    # for key, item in class_mapping.items():
+    #     if label_mapping[item] < config.novel_class_id_thresh:
+    #         print(f"{key}: {dataset_val_unlabeled.cat_id_to_name[label_mapping[item]]}")
     # print("=======================================================")
     # with open("owsam_eval_lvis_preds.p", "rb") as fp:
     #     print(pickle.load(fp))
