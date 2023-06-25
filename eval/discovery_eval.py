@@ -188,7 +188,7 @@ class DiscoveryEvaluator:
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
             # Map from the predicted label to the label found with the Hungarian algorithm.
-            pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"].item()]
+            pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"]]
             # Filter out predictions of novel categories (i.e. not mapped to a GT category).
             if pred["category_id"] < config.novel_class_id_thresh:
                 # Now map from that label back to the labels as in the original annotations.
@@ -248,7 +248,6 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:3]
 
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
@@ -268,7 +267,6 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:3]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
