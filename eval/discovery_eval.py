@@ -16,6 +16,8 @@ from torch.utils.data import DataLoader
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
+import json
+import pickle
 
 
 class ClassMapper:
@@ -172,6 +174,17 @@ class DiscoveryEvaluator:
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
         self.class_mapper.get_mapping()
+
+        print("Saving the class_mapping at owsam_eval_lvis_class_mapping.json")
+        with open("owsam_eval_lvis_class_mapping.p", "wb") as fp:
+            pickle.dump(self.class_mapper.class_mapping, fp)
+        print("Saved class mapping")
+
+        print("Saving predictions at owsam_eval_lvis_preds.json")
+        with open("owsam_eval_lvis_preds.p", "wb") as fp:
+            pickle.dump(self.unsupervis_preds, fp)
+        print("Saved predictions")
+
         mapped_preds = []
         for pred in tqdm(self.unsupervis_preds):
             # Map from the predicted label to the label found with the Hungarian algorithm.
@@ -207,9 +220,9 @@ class DiscoveryEvaluator:
                 [
                     {
                         "image_id": img_id,
-                        "category_id": labels[k],
+                        "category_id": labels[k].item(),
                         "bbox": box,
-                        "score": scores[k],
+                        "score": scores[k].item(),
                     }
                     for k, box in enumerate(boxes)
                 ]
@@ -235,6 +248,7 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
+    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:3]
 
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
@@ -254,6 +268,7 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
+    dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:3]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
@@ -280,3 +295,9 @@ if __name__ == "__main__":
 
     print("Evaluating the predictions...")
     evaluator.evaluate()
+
+    # with open("owsam_eval_lvis_class_mapping.p", "rb") as fp:
+    #     print(pickle.load(fp))
+    # print("=======================================================")
+    # with open("owsam_eval_lvis_preds.p", "rb") as fp:
+    #     print(pickle.load(fp))
