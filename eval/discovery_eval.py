@@ -250,7 +250,7 @@ if __name__ == "__main__":
         config.img_dir,
         config.device,
     )
-    dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:1]
+    # dataset_val_labeled.img_ids = dataset_val_labeled.img_ids[:1]
 
     dataloader_val_labeled = DataLoader(
         dataset_val_labeled,
@@ -270,7 +270,7 @@ if __name__ == "__main__":
         config.device,
     )
 
-    dataset_val_unlabeled.img_ids = [724]
+    # dataset_val_unlabeled.img_ids = [724]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
