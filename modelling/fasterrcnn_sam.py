@@ -441,6 +441,10 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
 
             all_features.append(box_features)
 
+        # Ensure each view yields the same amount of boxes. Can differ slightly between different augmentations+NMS.
+        num_features = min(map(len, all_features))
+        all_features = [feats[:num_features] for feats in all_features]
+
         return all_features
 
 
