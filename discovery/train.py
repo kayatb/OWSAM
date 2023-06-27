@@ -268,6 +268,9 @@ if __name__ == "__main__":
         callbacks=[
             checkpoint_callback,
         ],
+        # Necessary when num_devices > 1, since we don't use the discovery classification head during the initial
+        # memory filling and when training on multiple GPUs, pl doesn't like unused params otherwise.
+        # strategy=pl.strategies.DDPStrategy(find_unused_parameters=True),
     )
 
     trainer.fit(model, dataloader_train, dataloader_val)
