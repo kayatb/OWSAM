@@ -130,7 +130,7 @@ class RoIHeadsDiscovery(RoIHeads):
 
         box_features = self.box_roi_pool(features, proposals, image_shapes)
         box_features = self.box_head(box_features)
-        class_logits, box_regression = self.box_predictor(box_features)
+        class_logits, box_regression = self.box_predictor(box_features)  # FIXME: add false background here as well.
 
         result: List[Dict[str, torch.Tensor]] = []
         losses = {}

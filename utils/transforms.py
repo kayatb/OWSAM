@@ -43,17 +43,19 @@ class GrayScale(T.Grayscale):
         return image, boxes
 
 
-class GaussianBlur(torch.nn.Module):
+class GaussianBlur(T.GaussianBlur):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
 
-    def __init__(self, sigma=[0.1, 2.0], prob=1.0):
+    def __init__(self, kernel_size=3, sigma=[0.1, 2.0], prob=1.0):
+        super().__init__(kernel_size, sigma)
         self.sigma = sigma
         self.prob = prob
 
     def __call__(self, image, boxes=None):
         if torch.rand(1) < self.prob:
-            sigma = random.uniform(self.sigma[0], self.sigma[1])
-            image = image.filter(ImageFilter.GaussianBlur(radius=sigma))
+            # sigma = random.uniform(self.sigma[0], self.sigma[1])
+            # image = image.filter(ImageFilter.GaussianBlur(radius=sigma))
+            image = super().forward(image)
         return image, boxes
 
 

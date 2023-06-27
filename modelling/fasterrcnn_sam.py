@@ -124,14 +124,14 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
             image = self.discovery_augmentations(image)
 
             image = self.normalize(image)
-            image, sam_index = self.resize(image, sam_index)
-            image, sam_index = self.horizontal_flip(image, sam_index)
+            image, sam_index, _ = self.resize(image, sam_index)
+            image, sam_index, _ = self.horizontal_flip(image, sam_index)
 
             images[i] = image
             sam_boxes[i] = sam_index
 
         image_list = self.get_image_list(images)
-        return image_list, sam_boxes
+        return image_list, sam_boxes, None  # None to remain compatible with standard transform.
 
     def get_image_list(self, images):
         image_sizes = [img.shape[-2:] for img in images]
@@ -156,7 +156,9 @@ class GeneralizedRCNNTransformSAM(GeneralizedRCNNTransform):
                 T.GaussianBlur(sigma=[0.1, 2.0], prob=0.5),
             ]
         )
-        image = transform(image)
+        image, _ = transform(image)
+
+        return image
 
     def resize(
         self,

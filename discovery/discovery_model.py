@@ -53,7 +53,6 @@ class DiscoveryModel(nn.Module):
             raise ValueError(f"Unknown ForwardMode {mode} given.")
 
     def forward_train(self, supervised_batch, unsupervised_batch):
-        # since background class is removed.
         # Contains "loss_classifier"
         supervised_loss = self.supervised_model(supervised_batch)
         supervised_loss = {"supervised_" + k: v for k, v in supervised_loss.items()}
@@ -64,7 +63,9 @@ class DiscoveryModel(nn.Module):
         # Generate features for two different augmented images (so each in feats)
         # Extract features for the ROIs from both augmented images
         # Input to discovery_model should be list with the RoI features for each view.
-        box_feats = self.supervised_model.get_box_features(unsupervised_batch, num_views=config.num_views)
+        box_feats = self.supervised_model.get_box_features(
+            unsupervised_batch, num_views=config.num_views, is_discovery_train=True
+        )
         # TODO: once batched processing implemented. Split the different views.
         # box_feats = torch.split(box_feats, len(unsupervised_batch["images"]))
         # assert len(box_feats[0]) == len(box_feats[1])
