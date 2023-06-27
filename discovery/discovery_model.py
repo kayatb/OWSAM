@@ -182,7 +182,12 @@ class DiscoveryModel(nn.Module):
             if key.startswith("model"):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
-        model = SAMFasterRCNN(config.num_labeled + 1, config.feature_extractor_ckpt, trainable_backbone_layers=0)
+        model = SAMFasterRCNN(
+            config.num_labeled + 1,
+            config.feature_extractor_ckpt,
+            trainable_backbone_layers=0,
+            rpn_nms_thresh=config.rpn_nms_thresh,
+        )
         model.roi_heads = RoIHeadsDiscovery(
             model.roi_heads.box_roi_pool,
             model.roi_heads.box_head,

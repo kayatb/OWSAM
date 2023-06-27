@@ -16,6 +16,7 @@ import utils.transforms as T
 import torch
 from torch import nn, Tensor
 from torchvision.transforms import functional as F
+from torchvision.ops import boxes as box_ops
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 from torchvision.models.detection.roi_heads import RoIHeads
@@ -312,8 +313,12 @@ class RegionProposalNetworkSAM(nn.Module):
     #         final_scores.append(scores)
     #     return final_boxes, final_scores
 
-    # TODO: implement this if necessary
     def filter_proposals(self, proposals, scores):
+        # During discovery, TUM does no NMS and keeps the top 50 proposals.
+        if self.nms_thresh <= 1.0:
+            for i in range(len(proposals)):
+                keep = box_ops.nms(proposals[i], scores[i], self.nms_thresh)  # TODO: could also use batched_nms here.
+                proposals[i], scores[i] = proposals[i][keep], scores[i][keep]
         return proposals, scores
 
     def forward(self, proposals, scores):
@@ -428,8 +433,8 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
             images, sam_boxes, _ = self.transform(
                 batch["images"], batch["sam_boxes"], is_discovery_train=is_discovery_train
             )
-            features = self.backbone(images.tensors)
             proposals, _ = self.rpn(sam_boxes, batch["iou_scores"])
+            features = self.backbone(images.tensors)
 
             box_features = self.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
             box_features = self.roi_heads.box_head(box_features)

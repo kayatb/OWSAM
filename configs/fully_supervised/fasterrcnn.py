@@ -23,6 +23,8 @@ milestones = [38, 51]  # 16, 22 for Torchvision's version.
 warmup_steps = 1000
 warmup_start_lr = 1e-3
 
+nms_thresh = 1.01  # No NMS in the RPN.
+
 dir = f"rpn_mocov2_resnet50_fasterrcnn_allmasks32_{epochs}epochs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"

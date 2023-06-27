@@ -240,14 +240,14 @@ def load_resnet50_fpn_with_moco(checkpoint_path, trainable_backbone_layers):
     return feature_extractor
 
 
-def SAMFasterRCNN(num_classes, checkpoint_path, trainable_backbone_layers=5, **kwargs):
+def SAMFasterRCNN(num_classes, checkpoint_path, trainable_backbone_layers=5, rpn_nms_thresh=1.01, **kwargs):
     backbone = load_resnet50_fpn_with_moco(checkpoint_path, trainable_backbone_layers)
     model = FasterRCNNSAM(
         backbone,
         num_classes,
         min_size=[640, 672, 704, 736, 768, 800],
         max_size=1333,
-        rpn_nms_thresh=0.7,
+        rpn_nms_thresh=rpn_nms_thresh,
         rpn_pre_nms_top_n_train=2000,
         rpn_pre_nms_top_n_test=1000,
         rpn_post_nms_top_n_train=1000,
