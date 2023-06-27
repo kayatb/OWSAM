@@ -156,7 +156,7 @@ def load_data():
         config.ann_train_labeled,
         config.img_dir,
         config.device,
-        offset=0,
+        offset=1,
     )
     dataset_val_labeled = ImageData(
         config.masks_dir,

@@ -145,6 +145,7 @@ class RoIHeadsDiscovery(RoIHeads):
             labels = torch.cat(labels, dim=0)
             foreground_idx = torch.where(labels > 0)[0]
             fg_labels = labels[foreground_idx]
+            class_logits = self.add_fake_bg(class_logits)
             fg_class_logits = class_logits[foreground_idx]
 
             loss_classifier = fastrcnn_loss_discovery(fg_class_logits, fg_labels)
