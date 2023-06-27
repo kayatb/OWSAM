@@ -231,6 +231,11 @@ class DiscoveryClassifier(nn.Module):
 
     def forward(self, views):
         outputs = self.forward_classifier(views)
+        # If we have too many features, take a random subset to update the memory with.
+        if outputs["feats"][0].shape[0] > self.items_per_batch:
+            indices = torch.randperm(len(outputs["feats"][0]))[: self.items_per_batch]
+        else:
+            indices = torch.arange(0, len(outputs["feats"][0]))
 
         # Process outputs
         outputs["logits_lab"] = outputs["logits_lab"].unsqueeze(1).expand(-1, self.num_heads, -1, -1)
@@ -244,7 +249,7 @@ class DiscoveryClassifier(nn.Module):
             self.memory_patience -= 1
 
             for v in range(self.num_views):
-                self.update_memory(v, outputs["feats"][v])
+                self.update_memory(v, outputs["feats"][v][indices])
 
             # Compute arbitrary losses
             loss_cluster = torch.zeros(1).to(logits.device)[0]
@@ -275,7 +280,7 @@ class DiscoveryClassifier(nn.Module):
                     targets[v, h] = targets_sk
 
                 # Update memory for the current view
-                self.update_memory(v, outputs["feats"][v])
+                self.update_memory(v, outputs["feats"][v][indices])
 
             # Compute swapped prediction loss
             loss_cluster = self.get_swapped_prediction_loss(logits, targets)
