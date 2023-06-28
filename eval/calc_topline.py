@@ -6,7 +6,8 @@ classifier. Now calculate the mAP with these predictions.
 """
 
 import configs.fully_supervised.main as config
-from data.datasets.mask_feature_dataset import MaskData
+
+from data.datasets.fasterrcnn_data import ImageData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
 from eval.coco_eval import CocoEvaluator
@@ -27,15 +28,31 @@ def parse_args():
     return args
 
 
+def get_sam_boxes(batch, k=-1):
+    """Get the boxes and their respective boxes from SAM. Return the top-k boxes based on predicted IoU scores if k > 0.
+    Otherwise, return all boxes."""
+    pred_boxes = batch["sam_boxes"][0]
+    pred_scores = batch["iou_scores"][0]
+
+    # Sort the boxes according to their scores (necessary for handling duplicate IoU matches).
+    # NOTE: might not be necessary, boxes and their respective score seem to be already sorted...
+    boxes_ind = torch.argsort(pred_scores, descending=True)
+    sorted_pred_boxes = torch.empty(pred_boxes.shape)
+    for i, idx in enumerate(boxes_ind):
+        sorted_pred_boxes[i] = pred_boxes[idx]
+
+    return sorted_pred_boxes, pred_scores
+
+
 if __name__ == "__main__":
     args = parse_args()
 
-    dataset = MaskData(config.masks_dir, args.ann_file, config.device, pad_num=config.pad_num)
+    dataset = ImageData(config.masks_dir, args.ann_file, config.img_dir, config.device)
     dataloader = DataLoader(
         dataset,
         batch_size=1,  # Has to be 1 to avoid padding.
         shuffle=False,
-        collate_fn=MaskData.collate_fn,
+        collate_fn=dataset.collate_fn,
         num_workers=config.num_workers,
         persistent_workers=True,
         pin_memory=True,
@@ -49,18 +66,10 @@ if __name__ == "__main__":
 
     for i, batch in enumerate(tqdm(dataloader)):
         assert (
-            batch["boxes"].shape[0] == 1
+            len(batch["sam_boxes"]) == 1
         ), f"Batch size has to be 1 to avoid padding. Current batch size is {batch['boxes'].shape[0]}."
 
-        pred_boxes = box_xywh_to_xyxy(batch["boxes"][0])  # Remove padded boxes
-        pred_scores = batch["iou_scores"][0]
-
-        # Sort the boxes according to their scores (necessary for handling duplicate IoU matches).
-        # NOTE: might not be necessary, boxes and their respective score seem to be already sorted...
-        boxes_ind = torch.argsort(pred_scores, descending=True)
-        sorted_pred_boxes = torch.empty(pred_boxes.shape)
-        for i, idx in enumerate(boxes_ind):
-            sorted_pred_boxes[i] = pred_boxes[idx]
+        sorted_pred_boxes, pred_scores = get_sam_boxes(batch)
 
         gt_boxes = box_xywh_to_xyxy(batch["targets"][0]["boxes"])
         gt_labels = batch["targets"][0]["labels"]
@@ -70,7 +79,7 @@ if __name__ == "__main__":
 
         # Take the predicted box with the highest IoU and assign that the corresponding GT label
         best_idx = []
-        for i in range(min(len(gt_boxes), len(pred_boxes))):
+        for i in range(min(len(gt_boxes), len(sorted_pred_boxes))):
             ious_ind = torch.argsort(ious[:, i], descending=True)
             j = 0
             # Ensure no duplicate assignments.
