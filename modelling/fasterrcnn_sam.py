@@ -321,10 +321,11 @@ class RegionProposalNetworkSAM(nn.Module):
                 proposals[i], scores[i] = proposals[i][keep], scores[i][keep]
         return proposals, scores
 
-    def forward(self, proposals, scores):
-        boxes, scores = self.filter_proposals(proposals, scores)  # , images.image_sizes, num_anchors_per_level)
+    def forward(self, proposals, scores, is_discovery_train=False):
+        if is_discovery_train:
+            proposals, scores = self.filter_proposals(proposals, scores)
 
-        return boxes, scores
+        return proposals, scores
 
 
 class GeneralizedRCNNSAM(GeneralizedRCNN):
@@ -433,7 +434,7 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
             images, sam_boxes, _ = self.transform(
                 batch["images"], batch["sam_boxes"], is_discovery_train=is_discovery_train
             )
-            proposals, _ = self.rpn(sam_boxes, batch["iou_scores"])
+            proposals, _ = self.rpn(sam_boxes, batch["iou_scores"], is_discovery_train=is_discovery_train)
             features = self.backbone(images.tensors)
 
             box_features = self.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
