@@ -17,22 +17,25 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from torchvision.ops import boxes as box_ops
 
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="Calculate SAM topline mAP")
     parser.add_argument("-m", "--mode", required=True, choices=["coco", "lvis"], help="COCO or LVIS evaluation mode")
     parser.add_argument("-a", "--ann-file", required=True, help="Annotation file location of the dataset")
+    parser.add_argument("-k", "--top-k", default=-1, type=int, help="Number of boxes to use as proposals")
+    parser.add_argument("--nms", default=1.01, type=float, help="NMS threshold to apply.")
     args = parser.parse_args()
 
     return args
 
 
-def get_sam_boxes(batch, k=-1):
+def get_sam_boxes(batch, k=-1, nms=1.01):
     """Get the boxes and their respective boxes from SAM. Return the top-k boxes based on predicted IoU scores if k > 0.
     Otherwise, return all boxes."""
     pred_boxes = batch["sam_boxes"][0]
-    pred_scores = batch["iou_scores"][0]
+    pred_scores = batch["iou_scores"][0] * batch["stability_scores"][0]
 
     # Sort the boxes according to their scores (necessary for handling duplicate IoU matches).
     # NOTE: might not be necessary, boxes and their respective score seem to be already sorted...
@@ -40,6 +43,12 @@ def get_sam_boxes(batch, k=-1):
     sorted_pred_boxes = torch.empty(pred_boxes.shape)
     for i, idx in enumerate(boxes_ind):
         sorted_pred_boxes[i] = pred_boxes[idx]
+
+    if nms <= 1.0:
+        keep = box_ops.nms(sorted_pred_boxes, pred_scores, 0.7)
+        sorted_pred_boxes, pred_scores = sorted_pred_boxes[keep], pred_scores[keep]
+    if k > 0:
+        sorted_pred_boxes, pred_scores = sorted_pred_boxes[:k], pred_scores[:k]
 
     return sorted_pred_boxes, pred_scores
 
@@ -69,7 +78,7 @@ if __name__ == "__main__":
             len(batch["sam_boxes"]) == 1
         ), f"Batch size has to be 1 to avoid padding. Current batch size is {batch['boxes'].shape[0]}."
 
-        sorted_pred_boxes, pred_scores = get_sam_boxes(batch)
+        sorted_pred_boxes, pred_scores = get_sam_boxes(batch, k=args.top_k, nms=args.nms)
 
         gt_boxes = box_xywh_to_xyxy(batch["targets"][0]["boxes"])
         gt_labels = batch["targets"][0]["labels"]
