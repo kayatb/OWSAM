@@ -45,10 +45,11 @@ def get_sam_boxes(batch, k=-1, nms=1.01):
         sorted_pred_boxes[i] = pred_boxes[idx]
 
     if nms <= 1.0:
-        keep = box_ops.nms(sorted_pred_boxes, pred_scores, 0.7)
+        keep = box_ops.nms(sorted_pred_boxes, pred_scores, nms)
         sorted_pred_boxes, pred_scores = sorted_pred_boxes[keep], pred_scores[keep]
     if k > 0:
-        sorted_pred_boxes, pred_scores = sorted_pred_boxes[:k], pred_scores[:k]
+        keep = min(len(sorted_pred_boxes), k)
+        sorted_pred_boxes, pred_scores = sorted_pred_boxes[:keep], pred_scores[:keep]
 
     return sorted_pred_boxes, pred_scores
 

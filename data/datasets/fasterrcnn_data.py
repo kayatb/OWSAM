@@ -75,6 +75,7 @@ class ImageData(torch.utils.data.Dataset):
         # boxes = torch.zeros((self.num_masks, 4))
         boxes = []
         iou_scores = []
+        stability_scores = []
         # iou_scores = -torch.ones((self.num_masks))
 
         for mask in mask_data:
@@ -83,15 +84,18 @@ class ImageData(torch.utils.data.Dataset):
             # boxes[i] = box_xywh_to_xyxy(torch.as_tensor(mask["bbox"]))
             boxes.append(box_xywh_to_xyxy(torch.as_tensor(mask["bbox"])))
             iou_scores.append(mask["predicted_iou"])
+            stability_scores.append(mask["stability_score"])
             # iou_scores[i] = mask["predicted_iou"]
 
         boxes = torch.stack(boxes)
         iou_scores = torch.as_tensor(iou_scores)
+        stability_scores = torch.as_tensor(stability_scores)
 
         return {
             "image": img,
             "sam_boxes": boxes,
             "iou_scores": iou_scores,
+            "stability_scores": stability_scores,
             "img_id": self.img_ids[idx],
             "targets": targets,
         }
@@ -148,6 +152,7 @@ class ImageData(torch.utils.data.Dataset):
         images = [d["image"] for d in data]
         sam_boxes = [d["sam_boxes"] for d in data]
         iou_scores = [d["iou_scores"] for d in data]
+        stability_scores = [d["stability_scores"] for d in data]
         # boxes = torch.stack([d["boxes"] for d in data])
         # iou_scores = torch.stack([d["iou_scores"] for d in data])
         img_ids = [d["img_id"] for d in data]
@@ -157,6 +162,7 @@ class ImageData(torch.utils.data.Dataset):
             "images": images,
             "sam_boxes": sam_boxes,
             "iou_scores": iou_scores,
+            "stability_scores": stability_scores,
             "img_ids": img_ids,
             "targets": targets,
         }
