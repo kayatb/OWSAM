@@ -44,7 +44,7 @@ def get_sam_boxes(batch, k=-1, nms=1.01):
     for i, idx in enumerate(boxes_ind):
         sorted_pred_boxes[i] = pred_boxes[idx]
 
-    if nms <= 1.0:
+    if nms < 1.0:
         keep = box_ops.nms(sorted_pred_boxes, pred_scores, nms)
         sorted_pred_boxes, pred_scores = sorted_pred_boxes[keep], pred_scores[keep]
     if k > 0:
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     dataset = ImageData(config.masks_dir, args.ann_file, config.img_dir, config.device)
-    dataset.img_ids = dataset.img_ids[:100]
+    # dataset.img_ids = dataset.img_ids[:100]
     dataloader = DataLoader(
         dataset,
         batch_size=1,  # Has to be 1 to avoid padding.
@@ -76,6 +76,7 @@ if __name__ == "__main__":
     else:
         evaluator = LvisEvaluator(args.ann_file, ["bbox"], known_class_ids=lvis_known_class_ids)
 
+    print(f"top_k: {args.top_k} || nms: {args.nms}")
     for i, batch in enumerate(tqdm(dataloader)):
         assert (
             len(batch["sam_boxes"]) == 1
