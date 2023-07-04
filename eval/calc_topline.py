@@ -6,7 +6,7 @@ classifier. Now calculate the mAP with these predictions.
 """
 
 import configs.fully_supervised.main as config
-
+from configs.discovery import lvis_known_class_ids
 from data.datasets.fasterrcnn_data import ImageData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
@@ -51,6 +51,7 @@ def get_sam_boxes(batch, k=-1, nms=1.01):
         keep = min(len(sorted_pred_boxes), k)
         sorted_pred_boxes, pred_scores = sorted_pred_boxes[:keep], pred_scores[:keep]
 
+    # print(len(sorted_pred_boxes))
     return sorted_pred_boxes, pred_scores
 
 
@@ -58,6 +59,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     dataset = ImageData(config.masks_dir, args.ann_file, config.img_dir, config.device)
+    dataset.img_ids = dataset.img_ids[:100]
     dataloader = DataLoader(
         dataset,
         batch_size=1,  # Has to be 1 to avoid padding.
@@ -72,7 +74,7 @@ if __name__ == "__main__":
     if args.mode == "coco":
         evaluator = CocoEvaluator(args.ann_file, ["bbox"])
     else:
-        evaluator = LvisEvaluator(args.ann_file, ["bbox"])
+        evaluator = LvisEvaluator(args.ann_file, ["bbox"], known_class_ids=lvis_known_class_ids)
 
     for i, batch in enumerate(tqdm(dataloader)):
         assert (

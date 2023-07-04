@@ -624,7 +624,7 @@ class LVISEvalDiscovery(LVISEval):
     Extends `LVISEval` with printing results for known and novel classes only when `known_class_ids` is provided.
     """
 
-    def __init__(self, lvis_gt, lvis_dt, iou_type="segm", known_class_ids=None):
+    def __init__(self, lvis_gt, lvis_dt=None, iou_type="segm", known_class_ids=None):
         super().__init__(lvis_gt, lvis_dt, iou_type)
 
         # Remap categories list following the mapping applied to train data, - that is list all categories in a
@@ -793,6 +793,7 @@ class LvisEvaluator(object):
         for iou_type, lvis_eval in self.lvis_eval.items():
             print("IoU metric: {}".format(iou_type))
             lvis_eval.run()
+            lvis_eval.print_results()
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":
