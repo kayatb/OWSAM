@@ -1,29 +1,25 @@
 """
 Calculate the IoU overlap within the set of SAM boxes generated for a single image.
-Make a histogram of the frequencies.
+Make a cumulative histogram of the frequencies over all images.
 """
 
 import configs.fully_supervised.main as config
 
 from data.datasets.fasterrcnn_data import ImageData
 from utils.box_ops import box_iou
-from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
+from utils.misc import box_xywh_to_xyxy
 
 import argparse
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from torchvision.ops import boxes as box_ops
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="Calculate SAM topline mAP")
-    # parser.add_argument("-m", "--mode", required=True, choices=["coco", "lvis"], help="COCO or LVIS evaluation mode")
     parser.add_argument("-a", "--ann-file", required=True, help="Annotation file location of the dataset")
-    # parser.add_argument("-k", "--top-k", default=-1, type=int, help="Number of boxes to use as proposals")
-    # parser.add_argument("--nms", default=1.01, type=float, help="NMS threshold to apply.")
     args = parser.parse_args()
 
     return args
@@ -62,6 +58,7 @@ if __name__ == "__main__":
         prefetch_factor=3,
     )
 
+    histogram = None
     for i, batch in enumerate(tqdm(dataloader)):
         assert (
             len(batch["sam_boxes"]) == 1
@@ -76,5 +73,9 @@ if __name__ == "__main__":
         indices = torch.triu_indices(ious.shape[0], ious.shape[0], offset=1)
         ious = ious[indices[0], indices[1]].flatten()
 
-        histogram = torch.histc(ious, bins=10, min=0.0, max=1.0).numpy()
-        plot_iou_histogram(histogram)
+        if histogram is not None:
+            histogram += torch.histc(ious, bins=10, min=0.0, max=1.0).numpy()
+        else:
+            histogram = torch.histc(ious, bins=10, min=0.0, max=1.0).numpy()
+
+    plot_iou_histogram(histogram)
