@@ -780,14 +780,14 @@ class LvisEvaluator(object):
 
             self.eval_imgs[iou_type].append(eval_imgs)
 
-    # def synchronize_between_processes(self):
-    #     for iou_type in self.iou_types:
-    #         self.eval_imgs[iou_type] = np.concatenate(self.eval_imgs[iou_type], 2)
-    #         create_common_lvis_eval(self.coco_eval[iou_type], self.img_ids, self.eval_imgs[iou_type])
+    def synchronize_between_processes(self):
+        for iou_type in self.iou_types:
+            self.eval_imgs[iou_type] = np.concatenate(self.eval_imgs[iou_type], 2)
+            create_common_lvis_eval(self.lvis_eval[iou_type], self.img_ids, self.eval_imgs[iou_type])
 
-    # def accumulate(self):
-    #     for lvis_eval in self.coco_eval.values():
-    #         lvis_eval.accumulate()
+    def accumulate(self):
+        for lvis_eval in self.lvis_eval.values():
+            lvis_eval.accumulate()
 
     def summarize(self):
         for iou_type, lvis_eval in self.lvis_eval.items():

@@ -51,7 +51,6 @@ def get_sam_boxes(batch, k=-1, nms=1.01):
         keep = min(len(sorted_pred_boxes), k)
         sorted_pred_boxes, pred_scores = sorted_pred_boxes[:keep], pred_scores[:keep]
 
-    # print(len(sorted_pred_boxes))
     return sorted_pred_boxes, pred_scores
 
 
@@ -59,7 +58,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     dataset = ImageData(config.masks_dir, args.ann_file, config.img_dir, config.device)
-    # dataset.img_ids = dataset.img_ids[:100]
+
     dataloader = DataLoader(
         dataset,
         batch_size=1,  # Has to be 1 to avoid padding.
@@ -112,11 +111,9 @@ if __name__ == "__main__":
             "labels": gt_labels.cpu().apply_(dataset.continuous_to_cat_id.get),  # Original dataset cat IDs
             "scores": pred_scores[best_idx],
         }
-
         evaluator.update(results)
 
-    if args.mode == "coco":  # Only the COCO evaluator requires this
-        evaluator.synchronize_between_processes()
-        evaluator.accumulate()
+    evaluator.synchronize_between_processes()
+    evaluator.accumulate()
 
     evaluator.summarize()
