@@ -3,12 +3,13 @@ Copied and adapted from RNCDL:
 https://github.com/vlfom/RNCDL/blob/main/discovery/modeling/discovery/discovery_network.py
 """
 
+from discovery.sinkhorn_knopp import SinkhornKnopp, SinkhornKnoppLognormalPrior
+from utils.box_ops import box_iou
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
-from discovery.sinkhorn_knopp import SinkhornKnopp, SinkhornKnoppLognormalPrior
 
 
 class Prototypes(nn.Module):
@@ -182,6 +183,25 @@ class DiscoveryClassifier(nn.Module):
                 loss += self.cross_entropy_loss(logits[other_view], targets[view])
         return loss / (self.num_views * (self.num_views - 1))
 
+    def get_similarity_loss(self, logits, boxes):
+        """Calculate the similarity loss as follows:
+        1. Do softmax on the logits to make them sum to 1.
+        2. Compute the self-similarity matrix of these normalized logits.
+        3. Calculate the IoU overlap within the boxes.
+        4. Calculate the loss that when there's a high overlap in boxes, the logits should be the same,
+           i.e. loss on logit similarity, weighted by IoU."""
+        loss = 0
+        boxes = torch.cat(boxes)
+        ious, _ = box_iou(boxes, boxes)
+        ious[ious < 0.5] = 0.0  # Only calculate the loss if the IoU score >= 0.5.
+
+        for view in range(self.num_views):
+            norm_logits = F.log_softmax(logits[view].squeeze(), dim=-1)
+            similarity = F.cosine_similarity(norm_logits.unsqueeze(0), norm_logits.unsqueeze(1), dim=-1)
+            loss += torch.mean(torch.sum(ious * similarity, dim=-1))
+
+        return loss / (self.num_views * (self.num_views - 1))  # Average over views.
+
     @torch.no_grad()
     def normalize_prototypes(self):
         self.head_unlab.normalize_prototypes()
@@ -229,11 +249,12 @@ class DiscoveryClassifier(nn.Module):
             out_dict[key] = torch.stack([o[key] for o in out])
         return out_dict
 
-    def forward(self, views):
+    def forward(self, views, boxes):
         outputs = self.forward_classifier(views)
         # If we have too many features, take a random subset to update the memory with.
         if outputs["feats"][0].shape[0] > self.items_per_batch:
             indices = torch.randperm(len(outputs["feats"][0]))[: self.items_per_batch]
+        # Otherise, just use all features.
         else:
             indices = torch.arange(0, len(outputs["feats"][0]))
 
@@ -253,6 +274,7 @@ class DiscoveryClassifier(nn.Module):
 
             # Compute arbitrary losses
             loss_cluster = torch.zeros(1).to(logits.device)[0]
+            loss_similarity = torch.zeros(1).to(logits.device)[0]
 
         else:
             # Generate pseudo-labels with sinkhorn-knopp and fill targets
@@ -284,11 +306,13 @@ class DiscoveryClassifier(nn.Module):
 
             # Compute swapped prediction loss
             loss_cluster = self.get_swapped_prediction_loss(logits, targets)
+            loss_similarity = self.get_similarity_loss(logits, boxes)
 
         # Finalize losses
         losses = {
             "loss": loss_cluster,
             "loss_cluster": loss_cluster,
+            "loss_similarity": loss_similarity,
         }
 
         return losses

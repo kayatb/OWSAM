@@ -70,12 +70,14 @@ class DiscoveryModel(nn.Module):
         # box_feats = torch.split(box_feats, len(unsupervised_batch["images"]))
         # assert len(box_feats[0]) == len(box_feats[1])
 
-        discovery_loss = self.discovery_model(box_feats)
+        discovery_loss = self.discovery_model(box_feats, unsupervised_batch["sam_boxes"])
         discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
 
+        print(discovery_loss.keys())
         loss = (
             supervised_loss["supervised_loss_classifier"] * self.supervised_loss_lambda
             + discovery_loss["discovery_loss"]
+            + discovery_loss["discovery_loss_similarity"]
         )
 
         return loss, supervised_loss, discovery_loss

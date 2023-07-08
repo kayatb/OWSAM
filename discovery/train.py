@@ -48,6 +48,15 @@ class LitDiscovery(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
+        self.log(
+            "train_sim_loss",
+            discovery_loss["discovery_loss_similarity"],
+            batch_size=len(batch["labeled"]["sam_boxes"]),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
 
         self.log(
             "train_total_loss",
