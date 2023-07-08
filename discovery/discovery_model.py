@@ -97,19 +97,6 @@ class DiscoveryModel(nn.Module):
 
         return output
 
-    # @torch.no_grad()
-    # def extract_gt_preds_old(self, batch):
-    #     """Extract predictions for the GT boxes and for the predicted boxes."""
-    #     self.discovery_model.eval()
-    #     self.supervised_model.eval()
-
-    #     sam_box_features, gt_box_features = self.supervised_model.get_gt_box_features(batch)
-
-    #     gt_logits = self.discovery_model.forward_heads_single_view(gt_box_features)
-    #     gt_preds = torch.argmax(gt_logits, dim=-1)
-
-    #     return preds[0], gt_preds  # SAM boxes, GT boxes
-
     @torch.no_grad()
     def extract_gt_preds(self, batch, is_supervis):
         """Get the box features for the GT boxes and the SAM boxes in a single pass.
@@ -132,9 +119,7 @@ class DiscoveryModel(nn.Module):
         # Get box features for both boxes.
         box_features = []
         for boxes in boxes_to_extract:
-            proposals, _ = self.supervised_model.rpn(
-                boxes, batch["iou_scores"]
-            )  # NOTE: Just returns the boxes as-is right now.
+            proposals, _ = self.supervised_model.rpn(boxes, batch["iou_scores"])
             box_feats = self.supervised_model.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
             box_feats = self.supervised_model.roi_heads.box_head(box_feats)
 
@@ -206,7 +191,6 @@ class DiscoveryModel(nn.Module):
 
         return model
 
-    # TODO: test this
     def remove_background_from_supervised_model(self):
         """Remove the background class from the supervised classifier to enable discovery of new classes."""
         classifier = self.supervised_model.classifier
@@ -230,27 +214,6 @@ class DiscoveryModel(nn.Module):
                 model_state_dict[key[len("model.") :]] = ckpt_state_dict[key]
 
         self.load_state_dict(model_state_dict)
-
-    # def load_supervised_criterion(self):
-    #     # Use the same criterion as during supervised training phase.
-    #     eos_coef = 0.05  # Was 0.1
-    #     weight_dict = {"loss_ce": 0, "loss_bbox": 5}
-    #     weight_dict["loss_giou"] = 2
-
-    #     losses = ["labels"]
-
-    #     matcher = HungarianMatcher()
-    #     criterion = SetCriterion(
-    #         self.supervised_model.num_classes,
-    #         matcher,
-    #         weight_dict=weight_dict,
-    #         eos_coef=eos_coef,
-    #         losses=losses,
-    #     )
-    #     criterion.empty_weight[-1] = 1  # Weight for bg class no longer necessary, because there isn't one.
-    #     # criterion.to(device)
-
-    #     return criterion
 
 
 if __name__ == "__main__":
