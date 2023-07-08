@@ -1,7 +1,7 @@
 """Config for the training of the RNCDL discovery model."""
 from configs.fully_supervised.rpn import momentum, weight_decay
 
-epochs = 10  # FIXME: RNCDL trains for 15K iterations, which is around 2.4 epochs
+epochs = 3
 lr = 1e-2  # halfed compared to supervised phase.
 end_lr = 1e-3  # Minimum LR for cosine annealing scheduler.
 # Do warmup for n steps and go from warmup_start_lr to initial lr.
@@ -18,7 +18,7 @@ ann_val_unlabeled = "../datasets/lvis/lvis_v1_val.json"
 # ann_train_unlabeled = "../datasets/coco/annotations/instances_val2017.json"
 # ann_val_unlabeled = "../datasets/coco/annotations/instances_val2017.json"
 
-masks_dir = "mask_features/all"
+masks_dir = "mask_features/all_32"
 img_dir = "../datasets/coco"
 
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
@@ -42,8 +42,10 @@ supervised_loss_lambda = 0.5  # 0.01
 num_layers = 3
 hidden_dim = 256
 
-batch_size = 16  # RNCDL uses 4*4 per GPU
+batch_size = 8  # RNCDL uses 4*4 per GPU
 num_workers = 12
+
+rpn_nms_thresh = 0.7
 
 checkpoint_dir = "checkpoints"
 log_dir = "tensorboard_logs"

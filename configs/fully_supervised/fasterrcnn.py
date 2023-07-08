@@ -5,6 +5,7 @@ Config for training classification model with SAM RPN and MoCo v2 initialized Re
 from configs.fully_supervised.main import *
 
 model_type = "fasterrcnn"
+masks_dir = "mask_features/all_32"
 
 feature_extractor_ckpt = "checkpoints/moco_v2_800ep_pretrain.pth.tar"
 
