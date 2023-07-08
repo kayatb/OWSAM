@@ -7,7 +7,7 @@ https://github.com/vlfom/RNCDL/blob/main/discovery/evaluation/evaluator_discover
 """
 from eval.lvis_eval import LvisEvaluator, LVISEvalDiscovery, LVISResults
 import configs.discovery as config
-from discovery.discovery_model import DiscoveryModel
+from discovery.discovery_model import DiscoveryModel, ForwardMode
 from data.datasets.fasterrcnn_data import ImageData
 from utils.misc import box_xyxy_to_xywh
 
@@ -143,12 +143,12 @@ class DiscoveryEvaluator:
 
         # self.evaluator = LvisEvaluator(config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids)
         self.class_mapper = ClassMapper(config.last_free_class_id, config.max_class_num, config.novel_class_id_thresh)
-        self.unsupervis_preds = []
+        self.unsupervis_preds = {}
 
     def reset(self):
         # self.evaluator.reset()
         self.class_mapper.reset()
-        self.unsupervis_preds = []
+        self.unsupervis_preds = {}
 
     def update(self, batch, is_supervis):
         """Update the class mapping with the predictions from the batch.
@@ -166,14 +166,17 @@ class DiscoveryEvaluator:
 
         # Save predictions from the unsupervised dataset.
         if not is_supervis:
-            self.unsupervis_preds.extend(self.pred_to_lvis_format(batch, sam_outputs))
+            for i, id in enumerate(batch["img_ids"]):
+                self.unsupervis_preds[id] = sam_outputs[i]
+            # self.unsupervis_preds.extend(self.pred_to_lvis_format(batch, sam_outputs))
 
         self.class_mapper.update(batch, gt_preds)
 
-    def evaluate(self):
+    def evaluate(self, data):
         """After the class mapping has been calculated, map all predicted IDs to their assigned GT ID and
         calculate the measurements."""
         self.class_mapper.get_mapping()
+        evaluator = LvisEvaluator(config.ann_val_unlabeled, ["bbox"], known_class_ids=config.lvis_known_class_ids)
 
         # For saving of the predictions and found class mapping:
         # print("Saving the class_mapping at owsam_eval_lvis_class_mapping.json")
@@ -186,26 +189,51 @@ class DiscoveryEvaluator:
         #     pickle.dump(self.unsupervis_preds, fp)
         # print("Saved predictions")
 
-        mapped_preds = []
-        for pred in tqdm(self.unsupervis_preds):
-            # Map from the predicted label to the label found with the Hungarian algorithm.
-            pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"]]
-            # Filter out predictions of novel categories (i.e. not mapped to a GT category).
-            if pred["category_id"] < config.novel_class_id_thresh:
-                # Now map from that label back to the labels as in the original annotations.
-                pred["category_id"] = self.label_mapping[pred["category_id"]]
-                mapped_preds.append(pred)
+        # mapped_preds = []
+        # for pred in tqdm(self.unsupervis_preds):
+        #     # Map from the predicted label to the label found with the Hungarian algorithm.
+        #     pred["category_id"] = self.class_mapper.class_mapping[pred["category_id"]]
+        #     # Filter out predictions of novel categories (i.e. not mapped to a GT category).
+        #     if pred["category_id"] < config.novel_class_id_thresh:
+        #         # Now map from that label back to the labels as in the original annotations.
+        #         pred["category_id"] = self.label_mapping[pred["category_id"]]
+        #         mapped_preds.append(pred)
+        # for batch in tqdm(data):
+        #     batch["sam_boxes"] = [box.to(config.device) for box in batch["sam_boxes"]]
+        #     batch["targets"] = [
+        #         {"labels": t["labels"], "boxes": t["boxes"].to(config.device)} for t in batch["targets"]
+        #     ]
+        #     with torch.no_grad():
+        #         preds = self.model(supervised_batch=None, unsupervised_batch=batch, mode=ForwardMode.UNSUPERVISED_VAL)
 
+        #     results = {}
+        #     for i in range(len(batch["img_ids"])):
+        #         labels = torch.argmax(preds[i], dim=-1).cpu().apply_(self.class_mapper.class_mapping.get)
+        #         print("before:", labels.shape)
+        #         if labels.dim() < 2:
+        #             labels = labels.unsqueeze(0)
+        #         print("after:", labels.shape)
+        #         results[batch["img_ids"][i]] = {
+        #             "boxes": box_xyxy_to_xywh(batch["sam_boxes"][i]),  # Original COCO/LVIS box format.
+        #             "labels": labels,
+        #             "scores": batch["iou_scores"][i],
+        #         }
+        evaluator.update(self.unsupervis_preds)
+
+        evaluator.synchronize_between_processes()
+        evaluator.accumulate()
+
+        evaluator.summarize()
         # for pred in mapped_preds:
         #     self.evaluator.update(pred)
 
         # results = self.discovery_evaluator.summarize()
         # return results
-        lvis_eval = LVISEvalDiscovery(
-            config.ann_val_unlabeled, mapped_preds, "bbox", known_class_ids=config.lvis_known_class_ids
-        )
-        lvis_eval.run()
-        lvis_eval.print_results()
+        # lvis_eval = LVISEvalDiscovery(
+        #     config.ann_val_unlabeled, mapped_preds, "bbox", known_class_ids=config.lvis_known_class_ids
+        # )
+        # lvis_eval.run()
+        # lvis_eval.print_results()
 
     def pred_to_lvis_format(self, batch, outputs):
         """Get a model prediction in the format for LVIS evaluation. Returns a list of dicts with keys:
@@ -235,7 +263,7 @@ class DiscoveryEvaluator:
 
 if __name__ == "__main__":
     # Load the pre-trained model.
-    discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus/epoch=2-step=18636.ckpt"
+    discovery_ckpt_path = "checkpoints/discovery_TUM_3epochs_2gpus_0.7nms/epoch=2-step=18636.ckpt"
     batch_size = 1
 
     model = DiscoveryModel(config.supervis_ckpt)
@@ -270,7 +298,7 @@ if __name__ == "__main__":
         config.device,
     )
 
-    # dataset_val_unlabeled.img_ids = [724]
+    # dataset_val_unlabeled.img_ids = dataset_val_unlabeled.img_ids[:4]
 
     dataloader_val_unlabeled = DataLoader(
         dataset_val_unlabeled,
@@ -295,7 +323,7 @@ if __name__ == "__main__":
         evaluator.update(batch, is_supervis=False)
 
     print("Evaluating the predictions...")
-    evaluator.evaluate()
+    evaluator.evaluate(dataloader_val_unlabeled)
 
     # for id in config.lvis_known_class_ids:
     #     # i = dataset_val_unlabeled.cat_id_to_continuous[id]

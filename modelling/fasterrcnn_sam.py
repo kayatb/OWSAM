@@ -435,7 +435,7 @@ class GeneralizedRCNNSAM(GeneralizedRCNN):
                 batch["images"], batch["sam_boxes"], is_discovery_train=is_discovery_train
             )
             proposals, _ = self.rpn(sam_boxes, batch["iou_scores"], is_discovery_train=is_discovery_train)
-            features = self.backbone(images.tensors)
+            features = self.backbone(images.tensors.to(sam_boxes[0].device))
 
             box_features = self.roi_heads.box_roi_pool(features, proposals, images.image_sizes)
             box_features = self.roi_heads.box_head(box_features)

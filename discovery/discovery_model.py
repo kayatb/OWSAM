@@ -93,7 +93,7 @@ class DiscoveryModel(nn.Module):
         self.discovery_model.eval()
 
         box_feats = self.supervised_model.get_box_features(batch, is_discovery_train=False, num_views=1)
-        output = self.discovery_model.forward_heads_single_view(box_feats)
+        output = self.discovery_model.forward_heads_single_view(box_feats[0])
 
         return output
 
