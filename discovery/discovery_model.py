@@ -73,7 +73,6 @@ class DiscoveryModel(nn.Module):
         discovery_loss = self.discovery_model(box_feats, unsupervised_batch["sam_boxes"])
         discovery_loss = {"discovery_" + k: v for k, v in discovery_loss.items()}
 
-        print(discovery_loss.keys())
         loss = (
             supervised_loss["supervised_loss_classifier"] * self.supervised_loss_lambda
             + discovery_loss["discovery_loss"]

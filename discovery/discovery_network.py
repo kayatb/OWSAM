@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import math
 
 
 class Prototypes(nn.Module):
@@ -183,6 +184,17 @@ class DiscoveryClassifier(nn.Module):
                 loss += self.cross_entropy_loss(logits[other_view], targets[view])
         return loss / (self.num_views * (self.num_views - 1))
 
+    def cosine_similarity(self, t1, t2, dim=1, eps=1e-8):
+        # get normalization value
+        t1_div = torch.linalg.vector_norm(t1, dim=dim, keepdims=True)
+        t2_div = torch.linalg.vector_norm(t2, dim=dim, keepdims=True)
+
+        # normalize, avoiding division by 0
+        t1_norm = t1 / torch.clamp(t1_div, math.sqrt(eps))
+        t2_norm = t2 / torch.clamp(t2_div, math.sqrt(eps))
+
+        return (t1_norm * t2_norm).sum(dim=dim)
+
     def get_similarity_loss(self, logits, boxes):
         """Calculate the similarity loss as follows:
         1. Do softmax on the logits to make them sum to 1.
@@ -197,7 +209,8 @@ class DiscoveryClassifier(nn.Module):
 
         for view in range(self.num_views):
             norm_logits = F.log_softmax(logits[view].squeeze(), dim=-1)
-            similarity = F.cosine_similarity(norm_logits.unsqueeze(0), norm_logits.unsqueeze(1), dim=-1)
+            # similarity = F.cosine_similarity(norm_logits.unsqueeze(0), norm_logits.unsqueeze(1), dim=-1)
+            similarity = self.cosine_similarity(norm_logits.unsqueeze(0), norm_logits.unsqueeze(1), dim=-1)
             loss += torch.mean(torch.sum(ious * similarity, dim=-1))
 
         return loss / (self.num_views * (self.num_views - 1))  # Average over views.
