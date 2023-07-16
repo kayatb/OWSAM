@@ -5,19 +5,22 @@ then assign the matched mask the ground truth labels, i.e. we assume a perfect
 classifier. Now calculate the mAP with these predictions.
 """
 
-import configs.fully_supervised.main as config
+# import configs.fully_supervised.main as config
+import configs.discovery as config
 from configs.discovery import lvis_known_class_ids
 from data.datasets.fasterrcnn_data import ImageData
 from utils.box_ops import box_iou
 from utils.misc import box_xywh_to_xyxy, box_xyxy_to_xywh
 from eval.coco_eval import CocoEvaluator
-from eval.lvis_eval import LvisEvaluator
+from eval.lvis_eval import LVISEvalDiscovery
 
 import argparse
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from torchvision.ops import boxes as box_ops
+import numpy as np
+from lvis import LVIS
 
 
 def parse_args():
@@ -29,6 +32,21 @@ def parse_args():
     args = parser.parse_args()
 
     return args
+
+
+def evaluate_predictions_on_lvis(lvis_gt, lvis_results, iou_type, known_class_ids=None):
+    if len(lvis_results) == 0:
+        print("No predictions from the model!")
+
+    from lvis import LVISEval, LVISResults
+
+    lvis_results = LVISResults(lvis_gt, lvis_results, max_dets=300)
+    if known_class_ids is not None:
+        lvis_eval = LVISEvalDiscovery(lvis_gt, lvis_results, iou_type, known_class_ids)
+    else:
+        lvis_eval = LVISEval(lvis_gt, lvis_results, iou_type)
+    lvis_eval.run()
+    lvis_eval.print_results()
 
 
 def get_sam_boxes(batch, k=-1, nms=1.01):
@@ -72,10 +90,10 @@ if __name__ == "__main__":
 
     if args.mode == "coco":
         evaluator = CocoEvaluator(args.ann_file, ["bbox"])
-    else:
-        evaluator = LvisEvaluator(args.ann_file, ["bbox"], known_class_ids=lvis_known_class_ids)
 
     print(f"top_k: {args.top_k} || nms: {args.nms}")
+
+    predictions = []
     for i, batch in enumerate(tqdm(dataloader)):
         assert (
             len(batch["sam_boxes"]) == 1
@@ -90,30 +108,48 @@ if __name__ == "__main__":
         ious, _ = box_iou(sorted_pred_boxes, gt_boxes)
 
         # Take the predicted box with the highest IoU and assign that the corresponding GT label
-        best_idx = []
-        for i in range(min(len(gt_boxes), len(sorted_pred_boxes))):
+        # best_idx = []
+        best_boxes = []
+        best_labels = []
+        best_scores = []
+        for i in range(len(gt_boxes)):
             ious_ind = torch.argsort(ious[:, i], descending=True)
-            j = 0
-            # Ensure no duplicate assignments.
-            while ious_ind[j] in best_idx:
-                j += 1
-            best_idx.append(ious_ind[j].item())
 
-        assert len(best_idx) == len(torch.unique(torch.as_tensor(best_idx))), "Duplicate best boxes!"
+            best_boxes.append(sorted_pred_boxes[ious_ind[0]])
+            best_labels.append(gt_labels[i])
+            best_scores.append(pred_scores[ious_ind[0]])
 
-        # All unassigned boxes are filtered out.
-        best_boxes = sorted_pred_boxes[best_idx]  # Best labels is now equal to gt_labels
+        if args.mode == "coco":
+            results = {}
+            results[batch["img_ids"][0]] = {
+                "boxes": box_xyxy_to_xywh(best_boxes),  # Original COCO/LVIS box format.
+                "labels": best_labels.cpu().apply_(dataset.continuous_to_cat_id.get),  # Original dataset cat IDs
+                "scores": best_scores,
+            }
+            evaluator.update(results)
+        else:
+            boxes = np.array(box_xyxy_to_xywh(torch.stack(best_boxes)))
 
-        # To evaluator format.
-        results = {}
-        results[batch["img_ids"][0]] = {
-            "boxes": box_xyxy_to_xywh(best_boxes),  # Original COCO/LVIS box format.
-            "labels": gt_labels.cpu().apply_(dataset.continuous_to_cat_id.get),  # Original dataset cat IDs
-            "scores": pred_scores[best_idx],
-        }
-        evaluator.update(results)
+            formatted = [
+                {
+                    "image_id": batch["img_ids"][0],
+                    "category_id": dataset.continuous_to_cat_id[best_labels[k].item()],
+                    "bbox": box,
+                    "score": best_scores[k].item(),
+                }
+                for k, box in enumerate(boxes)
+            ]
+            predictions.extend(formatted)
 
-    evaluator.synchronize_between_processes()
-    evaluator.accumulate()
+    if args.mode == "coco":
+        evaluator.synchronize_between_processes()
+        evaluator.accumulate()
 
-    evaluator.summarize()
+        evaluator.summarize()
+    else:
+        evaluate_predictions_on_lvis(
+            LVIS(args.ann_file),
+            predictions,
+            "bbox",
+            known_class_ids=lvis_known_class_ids,
+        )
