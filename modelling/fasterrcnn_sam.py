@@ -12,6 +12,7 @@ SAM as RPN options:
 """
 from utils.misc import box_xywh_to_xyxy
 import utils.transforms as T
+from modelling.sam_roi_heads import SAMRoIHeads
 
 import torch
 from torch import nn, Tensor
@@ -528,7 +529,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         self.box_positive_fraction = box_positive_fraction
         self.bbox_reg_weights = bbox_reg_weights
 
-        roi_heads = RoIHeads(
+        roi_heads = SAMRoIHeads(
             # Box
             box_roi_pool,
             box_head,
