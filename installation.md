@@ -22,10 +22,5 @@ pip install -e .
 
 Install additional tools:
 ```bash
-pip install opencv-python pycocotools matplotlib tqdm lightning scipy tensorboard lvis albumentations
-```
-
-For hyperparameter tuning:
-```bash
-pip install "ray[tune]"
+pip install opencv-python pycocotools matplotlib tqdm lightning scipy tensorboard lvis
 ```
