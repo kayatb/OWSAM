@@ -26,6 +26,8 @@ warmup_start_lr = 1e-3
 
 rpn_nms_thresh = 1.01  # No NMS in the RPN.
 
+bg_weight = 10  # Weight of the background class in CE loss.
+
 dir = f"rpn_mocov2_resnet50_fasterrcnn_allmasks32_{epochs}epochs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"

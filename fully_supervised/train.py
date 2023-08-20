@@ -144,7 +144,10 @@ class LitFullySupervisedClassifier(pl.LightningModule):
             model = SAMRPN(config.num_classes, config.feature_extractor_ckpt, pad_num=config.pad_num)
         elif config.model_type == "fasterrcnn":
             model = SAMFasterRCNN(
-                config.num_classes, config.feature_extractor_ckpt, rpn_nms_thresh=config.rpn_nms_thresh
+                config.num_classes,
+                config.feature_extractor_ckpt,
+                rpn_nms_thresh=config.rpn_nms_thresh,
+                bg_weight=config.bg_weight,
             )
         else:
             raise ValueError(f"Unknown model type `{type}` given.")

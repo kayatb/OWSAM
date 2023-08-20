@@ -37,20 +37,11 @@ def calc_iou(boxes1, boxes2):
     return iou_scores
 
 
-def fastrcnn_loss(class_logits, box_regression, labels, regression_targets, ious):
+def fastrcnn_loss_iou_rel(class_logits, box_regression, labels, regression_targets, ious):
     # type: (Tensor, Tensor, List[Tensor], List[Tensor], Tensor) -> Tuple[Tensor, Tensor]
     """
-    Computes the loss for Faster R-CNN.
-
-    Args:
-        class_logits (Tensor)
-        box_regression (Tensor)
-        labels (list[BoxList])
-        regression_targets (Tensor)
-
-    Returns:
-        classification_loss (Tensor)
-        box_loss (Tensor)
+    Computes the loss for Faster R-CNN, where the CE part is weighted by the IoU overlap
+    between the SAM box and the matched GT box.
     """
 
     labels = torch.cat(labels, dim=0)
@@ -80,7 +71,95 @@ def fastrcnn_loss(class_logits, box_regression, labels, regression_targets, ious
     return classification_loss, box_loss
 
 
+def fastrcnn_loss(class_logits, box_regression, labels, regression_targets, bg_weight=1.0):
+    """
+    Computes the loss for Faster R-CNN with an optional weight for the background class.
+
+    Args:
+        class_logits (Tensor)
+        box_regression (Tensor)
+        labels (list[BoxList])
+        regression_targets (Tensor)
+        bg_weight (Float)
+
+    Returns:
+        classification_loss (Tensor)
+        box_loss (Tensor)
+    """
+    N, num_classes = class_logits.shape
+
+    labels = torch.cat(labels, dim=0)
+    regression_targets = torch.cat(regression_targets, dim=0)
+
+    weight = torch.ones(num_classes)
+    weight[-1] = bg_weight
+    classification_loss = F.cross_entropy(class_logits, labels, weight=weight)
+
+    # get indices that correspond to the regression targets for
+    # the corresponding ground truth labels, to be used with
+    # advanced indexing
+    sampled_pos_inds_subset = torch.where(labels > 0)[0]
+    labels_pos = labels[sampled_pos_inds_subset]
+    box_regression = box_regression.reshape(N, box_regression.size(-1) // 4, 4)
+
+    box_loss = F.smooth_l1_loss(
+        box_regression[sampled_pos_inds_subset, labels_pos],
+        regression_targets[sampled_pos_inds_subset],
+        beta=1 / 9,
+        reduction="sum",
+    )
+    box_loss = box_loss / labels.numel()
+
+    return classification_loss, box_loss
+
+
 class SAMRoIHeads(RoIHeads):
+    def __init__(
+        self,
+        box_roi_pool,
+        box_head,
+        box_predictor,
+        # Faster R-CNN training
+        fg_iou_thresh,
+        bg_iou_thresh,
+        batch_size_per_image,
+        positive_fraction,
+        bbox_reg_weights,
+        # Faster R-CNN inference
+        score_thresh,
+        nms_thresh,
+        detections_per_img,
+        # Mask
+        mask_roi_pool=None,
+        mask_head=None,
+        mask_predictor=None,
+        keypoint_roi_pool=None,
+        keypoint_head=None,
+        keypoint_predictor=None,
+        bg_weight=1.0,  # Weight to use for the background class for CE loss.
+    ):
+        super().__init__(
+            box_roi_pool,
+            box_head,
+            box_predictor,
+            fg_iou_thresh,
+            bg_iou_thresh,
+            batch_size_per_image,
+            positive_fraction,
+            bbox_reg_weights,
+            score_thresh,
+            nms_thresh,
+            detections_per_img,
+            mask_roi_pool,
+            mask_head,
+            mask_predictor,
+            keypoint_roi_pool,
+            keypoint_head,
+            keypoint_predictor,
+        )
+
+        self.bg_weight = bg_weight
+
     def select_training_samples(
         self,
         proposals,  # type: List[Tensor]
@@ -150,8 +229,8 @@ class SAMRoIHeads(RoIHeads):
             proposals, matched_idxs, labels, regression_targets, matched_gt_boxes = self.select_training_samples(
                 proposals, targets
             )
-            ious = calc_iou(proposals, matched_gt_boxes)
-            ious[labels == 0] = 1.0  # Don't use weighting for proposals with the background label.
+            # ious = calc_iou(proposals, matched_gt_boxes)
+            # ious[labels == 0] = 1.0  # Don't use weighting for proposals with the background label.
         else:
             labels = None
             regression_targets = None
@@ -168,8 +247,11 @@ class SAMRoIHeads(RoIHeads):
                 raise ValueError("labels cannot be None")
             if regression_targets is None:
                 raise ValueError("regression_targets cannot be None")
+            # loss_classifier, loss_box_reg = fastrcnn_loss_iou_rel(
+            #     class_logits, box_regression, labels, regression_targets, ious
+            # )
             loss_classifier, loss_box_reg = fastrcnn_loss(
-                class_logits, box_regression, labels, regression_targets, ious
+                class_logits, box_regression, labels, regression_targets, bg_weight=self.bg_weight
             )
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
         else:

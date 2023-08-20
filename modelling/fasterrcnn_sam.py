@@ -480,6 +480,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         box_batch_size_per_image=512,
         box_positive_fraction=0.25,
         bbox_reg_weights=None,
+        bg_weight=1.0,
         **kwargs,
     ):
         if not hasattr(backbone, "out_channels"):
@@ -542,6 +543,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
             box_score_thresh,
             box_nms_thresh,
             box_detections_per_img,
+            bg_weight=bg_weight,
         )
 
         if image_mean is None:
