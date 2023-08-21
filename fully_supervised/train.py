@@ -148,6 +148,7 @@ class LitFullySupervisedClassifier(pl.LightningModule):
                 config.feature_extractor_ckpt,
                 rpn_nms_thresh=config.rpn_nms_thresh,
                 bg_weight=config.bg_weight,
+                num_bg_classes=config.num_bg_classes,
             )
         else:
             raise ValueError(f"Unknown model type `{type}` given.")
@@ -275,8 +276,12 @@ def load_data():
         collate_fn_val = dataset_val.collate_fn
 
     elif config.model_type == "fasterrcnn":
-        dataset_train = ImageData(config.masks_dir, config.ann_train, config.img_dir, config.device)
-        dataset_val = ImageData(config.masks_dir, config.ann_val, config.img_dir, config.device)
+        dataset_train = ImageData(
+            config.masks_dir, config.ann_train, config.img_dir, config.device, offset=config.num_bg_classes - 1
+        )
+        dataset_val = ImageData(
+            config.masks_dir, config.ann_val, config.img_dir, config.device, offset=config.num_bg_classes - 1
+        )
 
         collate_fn_train = ImageData.collate_fn
         collate_fn_val = ImageData.collate_fn

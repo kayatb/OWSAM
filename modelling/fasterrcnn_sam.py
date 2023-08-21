@@ -1,15 +1,3 @@
-"""
-TODO:
-SAM as RPN options:
-    - only change the RPN to return the static SAM boxes and use FAster R-CNN implementation for everything else.
-        - Box refinements etc. are also calculated. Perhaps we want to keep SAM boxes as-is and only use classification?
-
-    - Do or don't filter in the SAM RPN. RPN does score thresholding (we have IoU and stability scores for the SAM boxes).
-      Could also calculate the objectness score as done in Faster R-CNN.
-    - Do we even want filtering in the RPN? Or only the filtering at the post-processing?
-
-    - Faster R-CNN does post-processing NMS per class to remove duplicate/redundant bboxes.
-"""
 from utils.misc import box_xywh_to_xyxy
 import utils.transforms as T
 from modelling.sam_roi_heads import SAMRoIHeads
@@ -481,6 +469,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         box_positive_fraction=0.25,
         bbox_reg_weights=None,
         bg_weight=1.0,
+        num_bg_classes=1,
         **kwargs,
     ):
         if not hasattr(backbone, "out_channels"):
@@ -503,6 +492,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
                 raise ValueError("num_classes should not be None when box_predictor is not specified")
 
         self.num_classes = num_classes
+        self.num_bg_classes = num_bg_classes
 
         out_channels = backbone.out_channels
 
@@ -544,6 +534,7 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
             box_nms_thresh,
             box_detections_per_img,
             bg_weight=bg_weight,
+            num_bg_classes=num_bg_classes,
         )
 
         if image_mean is None:

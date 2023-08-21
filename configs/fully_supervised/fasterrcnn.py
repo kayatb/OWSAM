@@ -26,13 +26,14 @@ warmup_start_lr = 1e-3
 
 rpn_nms_thresh = 1.01  # No NMS in the RPN.
 
-bg_weight = 10  # Weight of the background class in CE loss.
+bg_weight = 1  # Weight of the background class in CE loss.
+num_bg_classes = 1  # Number of nodes in the classification head to account for the background class.
 
 dir = f"rpn_mocov2_resnet50_fasterrcnn_allmasks32_{epochs}epochs"
 checkpoint_dir = f"checkpoints/{dir}"
 log_dir = f"tensorboard_logs/{dir}"
 
-num_classes = 81  # Includes the background class.
+num_classes = 80 + num_bg_classes  # Includes the background class.
 
 # RNCDL settings:
 # augmentations:
