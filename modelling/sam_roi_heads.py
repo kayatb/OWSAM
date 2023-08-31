@@ -116,6 +116,7 @@ def fastrcnn_loss(class_logits, box_regression, labels, regression_targets, bg_w
 class SAMRoIHeads(RoIHeads):
     def __init__(
         self,
+        rpn,
         box_roi_pool,
         box_head,
         box_predictor,
@@ -161,6 +162,8 @@ class SAMRoIHeads(RoIHeads):
 
         self.bg_weight = bg_weight
         self.num_bg_classes = num_bg_classes
+
+        self.rpn = rpn
 
     def select_training_samples(
         self,
@@ -240,6 +243,10 @@ class SAMRoIHeads(RoIHeads):
 
         box_features = self.box_roi_pool(features, proposals, image_shapes)
         box_features = self.box_head(box_features)
+
+        # Predict objectness score and filter with an RPN based on the calculated box features.
+        box_features, rpn_loss = self.rpn(proposals, box_features, targets)
+
         class_logits, box_regression = self.box_predictor(box_features)
 
         result: List[Dict[str, torch.Tensor]] = []
@@ -255,7 +262,11 @@ class SAMRoIHeads(RoIHeads):
             loss_classifier, loss_box_reg = fastrcnn_loss(
                 class_logits, box_regression, labels, regression_targets, bg_weight=self.bg_weight
             )
-            losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+            losses = {
+                "loss_classifier": loss_classifier,
+                "loss_box_reg": loss_box_reg,
+                "loss_rpn": rpn_loss["loss_objectness"],
+            }
         else:
             boxes, scores, labels = self.postprocess_detections(class_logits, box_regression, proposals, image_shapes)
             num_images = len(boxes)
