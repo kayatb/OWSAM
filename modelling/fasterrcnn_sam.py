@@ -260,7 +260,7 @@ class RegionProposalNetworkSAM(nn.Module):
         return proposals, scores
 
 
-class SAMRPNHead(RPNHead):
+class SAMRPNHead(nn.Module):
     """
     Adds a simple RPN Head with classification and regression heads
 
@@ -272,13 +272,14 @@ class SAMRPNHead(RPNHead):
 
     _version = 2
 
-    def __init__(self, in_channels: int, conv_depth=1) -> None:
+    def __init__(self, in_channels: int, resolution, conv_depth=1) -> None:
         super().__init__()
         convs = []
         for _ in range(conv_depth):
             convs.append(Conv2dNormActivation(in_channels, in_channels, kernel_size=3, norm_layer=None))
         self.conv = nn.Sequential(*convs)
-        self.cls_logits = nn.Conv2d(in_channels, 1, kernel_size=1, stride=1)
+        # self.cls_logits = nn.Conv2d(in_channels, 1, kernel_size=1, stride=1)
+        self.cls_logits = nn.Linear(self.conv[-1].out_channels * resolution, 1)
         # self.bbox_pred = nn.Conv2d(in_channels, num_anchors * 4, kernel_size=1, stride=1)
 
         for layer in self.modules():
@@ -292,9 +293,10 @@ class SAMRPNHead(RPNHead):
         # bbox_reg = []
         for feature in x:
             t = self.conv(feature)
+            t = t.flatten()
             logits.append(self.cls_logits(t))
             # bbox_reg.append(self.bbox_pred(t))
-        return logits  # , bbox_reg
+        return torch.stack(logits)  # , bbox_reg
 
 
 class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
@@ -421,15 +423,22 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
     def filter_proposals(
         self,
         proposals: Tensor,
+        box_features: Tensor,
         objectness: Tensor,
         # image_shapes: List[Tuple[int, int]],
         # num_anchors_per_level: List[int],
     ) -> Tuple[List[Tensor], List[Tensor]]:
-        num_images = proposals.shape[0]
+        num_images = len(proposals)
         # device = proposals.device
         # do not backprop through objectness
         objectness = objectness.detach()
-        objectness = objectness.reshape(num_images, -1)
+        box_features = box_features.detach()
+        # objectness = objectness.reshape(num_images, -1)
+        boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+        objectness = torch.split(objectness, boxes_per_image)
+        box_features = torch.split(box_features, boxes_per_image)
+
+        # box_features = box_features.reshape(torch.cat(proposals).shape)
 
         # levels = [
         #     torch.full((n,), idx, dtype=torch.int64, device=device) for idx, n in enumerate(num_anchors_per_level)
@@ -447,33 +456,37 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
         # levels = levels[batch_idx, top_n_idx]
         # proposals = proposals[batch_idx, top_n_idx]
 
-        objectness_prob = torch.sigmoid(objectness)
+        objectness_prob = [torch.sigmoid(o) for o in objectness]
+        # objectness_prob = torch.sigmoid(objectness)
 
         final_boxes = []
+        final_features = []
         final_scores = []
-        for boxes, scores in zip(proposals, objectness_prob):
+        for boxes, scores, features in zip(proposals, objectness_prob, box_features):
+            scores = scores.squeeze()
             # boxes = box_ops.clip_boxes_to_image(boxes, img_shape)
 
             # remove small boxes
             keep = box_ops.remove_small_boxes(boxes, self.min_size)
-            boxes, scores = boxes[keep], scores[keep]
+            boxes, scores, features = boxes[keep], scores[keep], features[keep]
 
             # remove low scoring boxes
             # use >= for Backwards compatibility
             keep = torch.where(scores >= self.score_thresh)[0]
-            boxes, scores = boxes[keep], scores[keep]
+            boxes, scores, features = boxes[keep], scores[keep], features[keep]
 
             # non-maximum suppression, independently done per level
             keep = box_ops.nms(boxes, scores, self.nms_thresh)
 
             # keep only topk scoring predictions
             keep = keep[: self.post_nms_top_n()]
-            boxes, scores = boxes[keep], scores[keep]
+            boxes, scores, features = boxes[keep], scores[keep], features[keep]
 
             final_boxes.append(boxes)
             final_scores.append(scores)
+            final_features.append(features)
 
-        return final_boxes, final_scores
+        return final_boxes, final_scores, final_features
 
     def compute_loss(self, objectness: Tensor, labels: List[Tensor]) -> Tensor:
         """
@@ -506,7 +519,7 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
         #     reduction="sum",
         # ) / (sampled_inds.numel())
 
-        objectness_loss = F.binary_cross_entropy_with_logits(objectness[sampled_inds], labels[sampled_inds])
+        objectness_loss = nn.functional.binary_cross_entropy_with_logits(objectness[sampled_inds], labels[sampled_inds])
 
         return objectness_loss  # , box_loss
 
@@ -533,7 +546,7 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
         """
         # RPN uses all feature maps that are available
         # features = list(features.values())
-        objectness, _ = self.head(box_features)
+        objectness = self.head(box_features)
         # anchors = self.anchor_generator(images, features)
 
         # num_images = len(anchors)
@@ -545,7 +558,7 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
         # the proposals
         # proposals = self.box_coder.decode(pred_bbox_deltas.detach(), anchors)
         # proposals = proposals.view(num_images, -1, 4)
-        boxes, scores = self.filter_proposals(sam_boxes, objectness)
+        boxes, scores, features = self.filter_proposals(sam_boxes, box_features, objectness)
 
         losses = {}
         if self.training:
@@ -556,7 +569,7 @@ class RegionProposalNetworkSAMObjectness(RegionProposalNetwork):
             losses = {
                 "loss_objectness": loss_objectness,
             }
-        return boxes, losses
+        return boxes, torch.cat(features), losses
 
 
 class GeneralizedRCNNSAM(GeneralizedRCNN):
@@ -742,17 +755,6 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
 
         rpn = RegionProposalNetworkSAM(rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh, rpn_score_thresh)
-        box_rpn = RegionProposalNetworkSAMObjectness(
-            None,
-            SAMRPNHead(backbone.out_channels),
-            box_fg_iou_thresh,
-            box_bg_iou_thresh,
-            box_batch_size_per_image,
-            box_positive_fraction,
-            rpn_pre_nms_top_n,
-            rpn_post_nms_top_n,
-            rpn_nms_thresh,
-        )
 
         if box_roi_pool is None:
             box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=0)
@@ -772,6 +774,18 @@ class FasterRCNNSAM(GeneralizedRCNNSAM):
         self.box_batch_size_per_image = box_batch_size_per_image
         self.box_positive_fraction = box_positive_fraction
         self.bbox_reg_weights = bbox_reg_weights
+
+        box_rpn = RegionProposalNetworkSAMObjectness(
+            None,
+            SAMRPNHead(backbone.out_channels, resolution**2),
+            box_fg_iou_thresh,
+            box_bg_iou_thresh,
+            box_batch_size_per_image,
+            box_positive_fraction,
+            rpn_pre_nms_top_n,
+            rpn_post_nms_top_n,
+            rpn_nms_thresh,
+        )
 
         roi_heads = SAMRoIHeads(
             box_rpn,

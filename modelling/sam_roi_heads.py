@@ -240,12 +240,10 @@ class SAMRoIHeads(RoIHeads):
             labels = None
             regression_targets = None
             matched_idxs = None
-
         box_features = self.box_roi_pool(features, proposals, image_shapes)
-        box_features = self.box_head(box_features)
-
         # Predict objectness score and filter with an RPN based on the calculated box features.
-        box_features, rpn_loss = self.rpn(proposals, box_features, targets)
+        proposals, box_features, rpn_loss = self.rpn(proposals, box_features, targets)
+        box_features = self.box_head(box_features)
 
         class_logits, box_regression = self.box_predictor(box_features)
 
